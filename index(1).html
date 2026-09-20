@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roll Call — Random Student &amp; Question Picker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root{
+    --bg: #16241c;
+    --panel: #1f3d2e;
+    --panel-raised: #274a38;
+    --chalk: #f2efe3;
+    --chalk-dim: #b9c4ba;
+    --rule: #3a5b47;
+    --yellow: #e8b923;
+    --yellow-dim: #a9860f;
+    --green: #7fb37a;
+    --red: #d9694f;
+    --radius: 6px;
+    --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+    --display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#16241c; --panel:#1f3d2e; --panel-raised:#274a38; --chalk:#f2efe3;
+    }
+  }
+  * { box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: var(--bg);
+    background-image:
+      linear-gradient(var(--rule) 1px, transparent 1px);
+    background-size: 100% 42px;
+    color: var(--chalk);
+    font-family: var(--display);
+    min-height: 100vh;
+    padding: 32px 20px 80px;
+  }
+  .wrap{ max-width: 760px; margin: 0 auto; }
+  header{ margin-bottom: 28px; }
+  header h1{
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(28px, 5vw, 40px);
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+  header p{
+    margin: 0;
+    color: var(--chalk-dim);
+    font-size: 15px;
+    max-width: 60ch;
+  }
+  nav.tabs{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    margin: 28px 0 0;
+    border-bottom: 2px solid var(--rule);
+  }
+  nav.tabs button{
+    font-family: var(--mono);
+    font-size: 13px;
+    background: none;
+    border: none;
+    color: var(--chalk-dim);
+    padding: 10px 16px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color .15s;
+  }
+  nav.tabs button:hover{ color: var(--chalk); }
+  nav.tabs button.active{
+    color: var(--yellow);
+    border-bottom-color: var(--yellow);
+  }
+  section.panel{
+    display: none;
+    background: var(--panel);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-top: 20px;
+    border: 1px solid var(--rule);
+  }
+  section.panel.active{ display: block; }
+  h2{
+    font-size: 18px;
+    margin: 0 0 4px;
+    font-weight: 600;
+  }
+  .hint{ color: var(--chalk-dim); font-size: 13px; margin: 0 0 18px; line-height: 1.5; }
+  .field{ margin-bottom: 16px; }
+  label{ display:block; font-family: var(--mono); font-size: 12px; color: var(--chalk-dim); margin-bottom: 6px; }
+  input[type="text"], textarea, select{
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--rule);
+    color: var(--chalk);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-family: var(--mono);
+    font-size: 14px;
+  }
+  textarea{ min-height: 140px; resize: vertical; line-height: 1.6; }
+  input[type="file"]{
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--chalk-dim);
+  }
+  button.btn{
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 14px;
+    background: var(--yellow);
+    color: #1a1206;
+    border: none;
+    border-radius: 4px;
+    padding: 11px 18px;
+    cursor: pointer;
+    transition: filter .15s, transform .1s;
+  }
+  button.btn:hover{ filter: brightness(1.08); }
+  button.btn:active{ transform: translateY(1px); }
+  button.btn.secondary{
+    background: transparent;
+    color: var(--chalk);
+    border: 1px solid var(--rule);
+  }
+  button.btn.secondary:hover{ border-color: var(--chalk-dim); }
+  button.btn.danger{ background: var(--red); color: #2a0d05; }
+  button.btn:disabled{ opacity: .5; cursor: not-allowed; }
+  .row{ display:flex; gap: 10px; flex-wrap: wrap; }
+  .savedlist{ margin-top: 18px; border-top: 1px solid var(--rule); padding-top: 14px; }
+  .saveditem{
+    display:flex; justify-content: space-between; align-items:center;
+    font-family: var(--mono); font-size: 13px;
+    padding: 8px 0; border-bottom: 1px dashed var(--rule);
+  }
+  .saveditem:last-child{ border-bottom: none; }
+  .saveditem .meta{ color: var(--chalk-dim); }
+  .saveditem button{
+    background:none; border:none; color: var(--red);
+    font-family: var(--mono); font-size: 12px; cursor:pointer;
+  }
+  .status{ font-family: var(--mono); font-size: 13px; color: var(--yellow); margin-top: 10px; min-height: 18px; }
+  select#pRoster, select#pBank{ margin-bottom: 10px; }
+  .stage{
+    text-align: center;
+    padding: 28px 10px 10px;
+  }
+  .stage .empty{ color: var(--chalk-dim); font-family: var(--mono); font-size: 14px; }
+  .namecard{
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(30px, 8vw, 46px);
+    color: var(--yellow);
+    margin: 6px 0 22px;
+  }
+  .qcard{
+    background: var(--bg);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 20px;
+    text-align: left;
+    margin-bottom: 18px;
+  }
+  .qcard .topic{ font-family: var(--mono); font-size: 11px; color: var(--chalk-dim); margin-bottom: 10px; }
+  .qcard .qtext{ font-size: 17px; line-height: 1.5; margin-bottom: 16px; }
+  .choice{
+    display:flex; gap: 10px; align-items:flex-start;
+    padding: 9px 10px; border-radius: 4px; margin-bottom: 6px;
+    font-size: 14px; border: 1px solid transparent;
+  }
+  .choice .letter{
+    font-family: var(--mono); font-weight: 700; color: var(--yellow-dim);
+    flex-shrink: 0;
+  }
+  .choice.correct{ border-color: var(--green); background: rgba(127,179,122,0.12); }
+  .choice.correct .letter{ color: var(--green); }
+  .reveal-row{ display:flex; justify-content:center; gap: 10px; flex-wrap: wrap; }
+  .score-row{ display:flex; justify-content:center; gap: 10px; margin-top: 4px; }
+  table{ width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 13px; }
+  th, td{ text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); }
+  th{ color: var(--chalk-dim); font-weight: 500; font-size: 11px; text-transform: none; }
+  td.num{ text-align: right; }
+  .toplinks{ display:flex; justify-content: space-between; align-items:center; margin-bottom: 14px; }
+  .ocrbox{
+    background: var(--bg); border: 1px solid var(--rule); border-radius: 4px;
+    padding: 12px; font-family: var(--mono); font-size: 13px; color: var(--chalk-dim);
+    margin-top: 10px; min-height: 20px;
+  }
+  a.tmplt{ color: var(--yellow-dim); font-family: var(--mono); font-size: 12px; text-decoration: underline; cursor:pointer; }
+
+  /* ---- attendance (NP) and carry-over options ---- */
+  details.attend, .optbox{
+    background: var(--bg); border: 1px solid var(--rule); border-radius: 4px;
+    padding: 12px 14px; margin-bottom: 14px;
+  }
+  details.attend summary{ cursor: pointer; font-family: var(--mono); font-size: 13px; color: var(--chalk); }
+  .pill{
+    display:inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+    font-size: 11px; border: 1px solid var(--rule); color: var(--chalk-dim);
+  }
+  .pill.has-np{ border-color: var(--red); color: var(--red); }
+  .chips{ display:flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .chip{
+    font-family: var(--mono); font-size: 13px; color: var(--chalk);
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 999px;
+    padding: 6px 12px; cursor: pointer;
+  }
+  .chip:hover{ border-color: var(--chalk-dim); }
+  .chip.np{ border-color: var(--red); color: var(--chalk-dim); text-decoration: line-through; }
+  .chip .tag{ text-decoration: none; display:inline-block; font-weight: 700; color: var(--red); margin-left: 4px; }
+  label.check{
+    display:flex; align-items:center; gap: 10px; cursor: pointer;
+    font-family: var(--display); font-size: 14px; color: var(--chalk); margin: 0;
+  }
+  label.check input{ width: 18px; height: 18px; accent-color: var(--yellow); flex-shrink: 0; }
+  .sessioninfo{ font-family: var(--mono); font-size: 12px; color: var(--chalk-dim); margin-top: 10px; line-height: 1.7; }
+  .sessioninfo details{ margin-top: 6px; }
+  .sessioninfo summary{ cursor: pointer; color: var(--yellow-dim); }
+  .sessioninfo .names{ margin-top: 6px; color: var(--chalk); }
+  .notice{ font-family: var(--mono); font-size: 12px; color: var(--red); margin: -10px 0 14px; }
+  .npbadge{ font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--red); margin-left: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Roll Call</h1>
+    <p>Load a roster, load a question bank, and let it pick who answers what. Everything below is saved on this device only.</p>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="rosters">1. Rosters</button>
+    <button class="tab-btn" data-tab="banks">2. Question Banks</button>
+    <button class="tab-btn" data-tab="practice">3. Call on Someone</button>
+    <button class="tab-btn" data-tab="scores">4. Scoreboard</button>
+    <button class="tab-btn" data-tab="sync">5. Google Sync</button>
+  </nav>
+
+  <!-- ROSTERS -->
+  <section class="panel active" id="tab-rosters">
+    <h2>Add a roster</h2>
+    <p class="hint">Upload a photo of a printed roster and it'll try to read the names — check the result before saving, handwriting especially can trip it up. Or just type/paste names, one per line.</p>
+
+    <div class="field">
+      <label for="rosterImg">Roster photo (optional)</label>
+      <input type="file" id="rosterImg" accept="image/*">
+      <div class="ocrbox" id="ocrStatus" style="display:none;"></div>
+    </div>
+
+    <div class="field">
+      <label for="rosterNames">Student names (one per line — edit freely)</label>
+      <textarea id="rosterNames" placeholder="Alex Chen&#10;Big Jon&#10;Priya Patel"></textarea>
+    </div>
+
+    <div class="field">
+      <label for="rosterLabel">Roster name</label>
+      <input type="text" id="rosterLabel" placeholder="e.g. Period 3 — AP CSA">
+    </div>
+
+    <div class="row">
+      <button class="btn" id="saveRoster">Save roster</button>
+    </div>
+    <div class="status" id="rosterStatus"></div>
+
+    <div class="savedlist" id="rosterList"></div>
+  </section>
+
+  <!-- QUESTION BANKS -->
+  <section class="panel" id="tab-banks">
+    <h2>Add a question bank</h2>
+    <p class="hint">Upload a CSV with columns: <strong>question, choiceA, choiceB, choiceC, choiceD, correct</strong> (correct = A, B, C, or D). <a class="tmplt" id="dlTemplate">Download a blank template</a></p>
+
+    <div class="field">
+      <label for="bankFile">CSV file</label>
+      <input type="file" id="bankFile" accept=".csv,text/csv">
+    </div>
+
+    <div class="field">
+      <label for="bankLabel">Topic name</label>
+      <input type="text" id="bankLabel" placeholder="e.g. Loops">
+    </div>
+
+    <div class="row">
+      <button class="btn" id="saveBank">Save question bank</button>
+    </div>
+    <div class="status" id="bankStatus"></div>
+
+    <div class="savedlist" id="bankList"></div>
+  </section>
+
+  <!-- PRACTICE -->
+  <section class="panel" id="tab-practice">
+    <h2>Call on someone</h2>
+    <p class="hint">Pick a roster and a topic, then call. Students marked NP (Not Present) are skipped. Questions don't repeat until the bank is used up.</p>
+
+    <div class="field">
+      <label for="pRoster">Roster</label>
+      <select id="pRoster"></select>
+    </div>
+    <div class="field">
+      <label for="pBank">Topic (quiz)</label>
+      <select id="pBank"></select>
+    </div>
+
+    <details class="attend" id="attendPanel">
+      <summary>Attendance <span class="pill" id="npCount">0 NP</span></summary>
+      <p class="hint" style="margin-top:10px;">Tap a name to mark that student <strong>NP</strong> (Not Present). NP students are skipped when calling. Attendance starts fresh each day.</p>
+      <div class="chips" id="npChips"></div>
+      <div class="row"><button class="btn secondary" id="allPresent">Mark everyone present</button></div>
+    </details>
+
+    <div class="optbox">
+      <label class="check"><input type="checkbox" id="pickOnce"> Pick each student only once</label>
+      <p class="hint" style="margin:8px 0 0;">Unchecked: any present student can be picked again, even in the same quiz. Checked: each present student is picked only once, across every quiz today, until you click Reset picked students. The list also starts fresh each new day.</p>
+      <div class="sessioninfo" id="sessionInfo"></div>
+    </div>
+
+    <div class="row">
+      <button class="btn" id="callBtn">Call on a random student</button>
+      <button class="btn secondary" id="resetPicked">Reset picked students</button>
+      <button class="btn secondary" id="resetQuestions">Reset questions</button>
+    </div>
+
+    <div class="stage" id="stage">
+      <p class="empty">Nobody's been called yet.</p>
+    </div>
+  </section>
+
+  <!-- SCOREBOARD -->
+  <section class="panel" id="tab-scores">
+    <div class="toplinks">
+      <h2 style="margin:0;">Scoreboard</h2>
+      <button class="btn secondary" id="exportCsv">Export CSV</button>
+    </div>
+    <p class="hint">Points from every "Call on Someone" session, per roster. NP days counts the days a student was marked Not Present. Export gives you a CSV you can import into your gradebook or LMS.</p>
+    <div class="field">
+      <label for="sRoster">Roster</label>
+      <select id="sRoster"></select>
+    </div>
+    <table id="scoreTable">
+      <thead><tr><th>Student</th><th class="num">Correct</th><th class="num">Called</th><th class="num">Points</th><th class="num">NP days</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- GOOGLE SYNC -->
+  <section class="panel" id="tab-sync">
+    <h2>Store this on your own Google account</h2>
+    <p class="hint">Signing in only grants access to files this app creates or that you open with it — never your whole Drive. Nothing is stored anywhere except your own Google account.</p>
+
+    <div id="signedOutView">
+      <button class="btn" id="googleSignIn">Sign in with Google</button>
+      <div class="status" id="syncStatus"></div>
+    </div>
+
+    <div id="signedInView" style="display:none;">
+      <div class="status" id="syncStatus2"></div>
+      <div class="field" id="sheetPicker" style="display:none;">
+        <label>Where should this be stored?</label>
+        <div class="row">
+          <button class="btn" id="createSheet">Create a new sheet in my Drive</button>
+        </div>
+        <p class="hint" style="margin-top:10px;">This creates a sheet named "Roll Call Data" in the root of your Drive. Move or rename it afterward as you like — the app will keep writing to the same file.</p>
+      </div>
+      <div class="field" id="sheetConnected" style="display:none;">
+        <label>Connected sheet</label>
+        <div class="ocrbox" id="sheetLink"></div>
+        <div class="row" style="margin-top:12px;">
+          <button class="btn" id="pushToSheet">Save current data to sheet</button>
+          <button class="btn secondary" id="pullFromSheet">Load data from sheet</button>
+          <button class="btn secondary" id="disconnectSheet">Disconnect</button>
+        </div>
+        <div class="status" id="pushStatus"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+// ---------- Google Sync config ----------
+// PASTE YOUR OWN OAUTH CLIENT ID BELOW — see setup instructions.
+const GOOGLE_CLIENT_ID = 'PASTE_YOUR_CLIENT_ID_HERE.apps.googleusercontent.com';
+const SHEETS_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+let gAccessToken = null;
+let gSheetId = load('rc_sheet_id', null);
+let gTokenClient = null;
+
+function initGoogle(){
+  if(GOOGLE_CLIENT_ID.startsWith('PASTE_')){
+    document.getElementById('syncStatus').textContent = 'Google Sync needs a Client ID pasted into the code first — see setup notes.';
+    document.getElementById('googleSignIn').disabled = true;
+    return;
+  }
+  gTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: SHEETS_SCOPE,
+    callback: (resp)=>{
+      if(resp.error){ document.getElementById('syncStatus').textContent = 'Sign-in failed: ' + resp.error; return; }
+      gAccessToken = resp.access_token;
+      onSignedIn();
+    }
+  });
+}
+window.addEventListener('load', ()=>{
+  // Google's script loads async; poll briefly until it's ready.
+  let tries = 0;
+  const check = setInterval(()=>{
+    tries++;
+    if(window.google && google.accounts){ clearInterval(check); initGoogle(); }
+    else if(tries > 40){ clearInterval(check); }
+  }, 250);
+});
+
+document.getElementById('googleSignIn').addEventListener('click', ()=>{
+  if(gTokenClient) gTokenClient.requestAccessToken();
+});
+
+function onSignedIn(){
+  document.getElementById('signedOutView').style.display = 'none';
+  document.getElementById('signedInView').style.display = 'block';
+  if(gSheetId){
+    showConnectedSheet();
+  } else {
+    document.getElementById('sheetPicker').style.display = 'block';
+  }
+}
+
+document.getElementById('createSheet').addEventListener('click', async ()=>{
+  const status = document.getElementById('syncStatus2');
+  status.textContent = 'Creating sheet in your Drive…';
+  try{
+    const res = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + gAccessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ properties: { title: 'Roll Call Data' } })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error?.message || 'Sheet creation failed');
+    gSheetId = data.spreadsheetId;
+    save('rc_sheet_id', gSheetId);
+    status.textContent = 'Created!';
+    document.getElementById('sheetPicker').style.display = 'none';
+    showConnectedSheet();
+  } catch(err){
+    status.textContent = 'Could not create sheet: ' + err.message;
+  }
+});
+
+function showConnectedSheet(){
+  document.getElementById('sheetConnected').style.display = 'block';
+  document.getElementById('sheetLink').innerHTML =
+    `<a href="https://docs.google.com/spreadsheets/d/${gSheetId}" target="_blank" style="color:var(--yellow-dim);">Open in Google Sheets ↗</a>`;
+}
+
+document.getElementById('pushToSheet').addEventListener('click', async ()=>{
+  const status = document.getElementById('pushStatus');
+  status.textContent = 'Saving…';
+  try{
+    const payload = JSON.stringify({ rosters, banks, points, attendance });
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${gSheetId}/values/A1?valueInputOption=RAW`,
+      {
+        method: 'PUT',
+        headers: { 'Authorization': 'Bearer ' + gAccessToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [[payload]] })
+      }
+    );
+    if(!res.ok){ const d = await res.json(); throw new Error(d.error?.message || 'Save failed'); }
+    status.textContent = 'Saved to your sheet just now.';
+  } catch(err){
+    status.textContent = 'Could not save: ' + err.message;
+  }
+});
+
+document.getElementById('pullFromSheet').addEventListener('click', async ()=>{
+  const status = document.getElementById('pushStatus');
+  status.textContent = 'Loading…';
+  try{
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${gSheetId}/values/A1`,
+      { headers: { 'Authorization': 'Bearer ' + gAccessToken } }
+    );
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error?.message || 'Load failed');
+    const cell = data.values && data.values[0] && data.values[0][0];
+    if(!cell){ status.textContent = 'That sheet has no saved data yet.'; return; }
+    const parsed = JSON.parse(cell);
+    rosters = parsed.rosters || {}; banks = parsed.banks || {}; points = parsed.points || {};
+    attendance = parsed.attendance || attendance;
+    save('rc_rosters', rosters); save('rc_banks', banks); save('rc_points', points); save('rc_attendance', attendance);
+    renderRosterList(); renderBankList(); refreshPracticeSelects(); refreshScoreSelects();
+    status.textContent = 'Loaded from your sheet.';
+  } catch(err){
+    status.textContent = 'Could not load: ' + err.message;
+  }
+});
+
+document.getElementById('disconnectSheet').addEventListener('click', ()=>{
+  gSheetId = null;
+  save('rc_sheet_id', null);
+  document.getElementById('sheetConnected').style.display = 'none';
+  document.getElementById('sheetPicker').style.display = 'block';
+});
+
+// ---------- storage helpers ----------
+function load(key, fallback){
+  try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch(e){ return fallback; }
+}
+function save(key, val){
+  try{ localStorage.setItem(key, JSON.stringify(val)); }
+  catch(e){ console.error('storage error', e); }
+}
+let rosters    = load('rc_rosters', {});     // { label: [names] }
+let banks      = load('rc_banks', {});       // { label: [{q, choices:[a,b,c,d], correct:0-3}] }
+let points     = load('rc_points', {});      // { rosterLabel: { name: {points, correct, called} } }
+let cycle      = load('rc_cycle', {});       // { "roster::topic": { usedQuestions:[] } }  (question no-repeat list, one per topic)
+let attendance = load('rc_attendance', {});  // { rosterLabel: { 'YYYY-MM-DD': [names marked NP] } }
+let session    = load('rc_session', {});     // { rosterLabel: { date, used:[names picked in ANY quiz that day] } }
+let pickOnce   = load('rc_once', false);     // false = students can be picked again; true = each present student is picked only once
+
+// ---------- tabs ----------
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+    if(btn.dataset.tab==='practice'){ refreshPracticeSelects(); }
+    if(btn.dataset.tab==='scores') refreshScoreSelects();
+  });
+});
+
+// ---------- CSV parsing (handles quoted fields) ----------
+function parseCSV(text){
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i], n = text[i+1];
+    if(inQuotes){
+      if(c === '"' && n === '"'){ field += '"'; i++; }
+      else if(c === '"'){ inQuotes = false; }
+      else field += c;
+    } else {
+      if(c === '"') inQuotes = true;
+      else if(c === ','){ row.push(field); field=''; }
+      else if(c === '\n' || c === '\r'){
+        if(c === '\r' && n === '\n') i++;
+        row.push(field); field='';
+        if(row.some(f=>f.trim()!=='')) rows.push(row);
+        row = [];
+      } else field += c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); if(row.some(f=>f.trim()!=='')) rows.push(row); }
+  return rows;
+}
+
+// ---------- ROSTERS ----------
+const rosterImg = document.getElementById('rosterImg');
+const ocrStatus = document.getElementById('ocrStatus');
+rosterImg.addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  ocrStatus.style.display = 'block';
+  ocrStatus.textContent = 'Reading image… this can take 10–20 seconds.';
+  try{
+    const result = await Tesseract.recognize(file, 'eng', {
+      logger: m => {
+        if(m.status === 'recognizing text'){
+          ocrStatus.textContent = 'Reading image… ' + Math.round(m.progress*100) + '%';
+        }
+      }
+    });
+    let lines = result.data.text.split('\n')
+      .map(l=>l.trim())
+      .filter(l=>l.length > 1)
+      .filter(l=>!/^\d+$/.test(l)); // drop lines that are just numbers
+    const ta = document.getElementById('rosterNames');
+    ta.value = (ta.value ? ta.value + '\n' : '') + lines.join('\n');
+    ocrStatus.textContent = 'Done — check the names below before saving, OCR isn\'t perfect.';
+  } catch(err){
+    ocrStatus.textContent = 'Could not read that image. Try typing the names instead.';
+  }
+});
+
+document.getElementById('saveRoster').addEventListener('click', ()=>{
+  const label = document.getElementById('rosterLabel').value.trim();
+  const names = document.getElementById('rosterNames').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const status = document.getElementById('rosterStatus');
+  if(!label){ status.textContent = 'Give this roster a name first.'; return; }
+  if(!names.length){ status.textContent = 'Add at least one student name.'; return; }
+  rosters[label] = names;
+  save('rc_rosters', rosters);
+  document.getElementById('rosterLabel').value = '';
+  document.getElementById('rosterNames').value = '';
+  status.textContent = 'Saved "' + label + '" with ' + names.length + ' students.';
+  renderRosterList();
+});
+
+function renderRosterList(){
+  const el = document.getElementById('rosterList');
+  const labels = Object.keys(rosters);
+  if(!labels.length){ el.innerHTML = ''; return; }
+  el.innerHTML = '<label>Saved rosters</label>' + labels.map(l=>
+    `<div class="saveditem"><span>${escapeHtml(l)} <span class="meta">(${rosters[l].length} students)</span></span><button data-r="${escapeHtml(l)}" class="delRoster">remove</button></div>`
+  ).join('');
+  el.querySelectorAll('.delRoster').forEach(b=>b.addEventListener('click', ()=>{
+    delete rosters[b.dataset.r];
+    delete attendance[b.dataset.r];
+    delete session[b.dataset.r];
+    save('rc_rosters', rosters);
+    save('rc_attendance', attendance);
+    save('rc_session', session);
+    renderRosterList();
+  }));
+}
+
+// ---------- QUESTION BANKS ----------
+document.getElementById('dlTemplate').addEventListener('click', ()=>{
+  const csv = 'question,choiceA,choiceB,choiceC,choiceD,correct\n"What does a for-loop do?","Repeats code","Stores a value","Ends the program","Defines a class",A\n';
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'question-template.csv';
+  a.click();
+});
+
+document.getElementById('saveBank').addEventListener('click', ()=>{
+  const label = document.getElementById('bankLabel').value.trim();
+  const file = document.getElementById('bankFile').files[0];
+  const status = document.getElementById('bankStatus');
+  if(!label){ status.textContent = 'Give this topic a name first.'; return; }
+  if(!file){ status.textContent = 'Choose a CSV file.'; return; }
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    const rows = parseCSV(e.target.result);
+    if(!rows.length){ status.textContent = 'That CSV looks empty.'; return; }
+    let header = rows[0].map(h=>h.trim().toLowerCase());
+    let dataRows = rows.slice(1);
+    const qi = header.indexOf('question');
+    const ai = header.indexOf('choicea');
+    const bi = header.indexOf('choiceb');
+    const ci = header.indexOf('choicec');
+    const di = header.indexOf('choiced');
+    const corri = header.indexOf('correct');
+    if(qi<0 || ai<0 || bi<0 || ci<0 || di<0 || corri<0){
+      status.textContent = 'CSV needs columns: question, choiceA, choiceB, choiceC, choiceD, correct.';
+      return;
+    }
+    const questions = dataRows.map(r=>{
+      const letter = (r[corri]||'').trim().toUpperCase();
+      const idx = {A:0,B:1,C:2,D:3}[letter];
+      return { q: r[qi], choices: [r[ai], r[bi], r[ci], r[di]], correct: idx===undefined?0:idx };
+    }).filter(item=>item.q && item.q.trim());
+    if(!questions.length){ status.textContent = 'No valid question rows found.'; return; }
+    banks[label] = questions;
+    save('rc_banks', banks);
+    document.getElementById('bankLabel').value = '';
+    document.getElementById('bankFile').value = '';
+    status.textContent = 'Saved "' + label + '" with ' + questions.length + ' questions.';
+    renderBankList();
+  };
+  reader.readAsText(file);
+});
+
+function renderBankList(){
+  const el = document.getElementById('bankList');
+  const labels = Object.keys(banks);
+  if(!labels.length){ el.innerHTML = ''; return; }
+  el.innerHTML = '<label>Saved question banks</label>' + labels.map(l=>
+    `<div class="saveditem"><span>${escapeHtml(l)} <span class="meta">(${banks[l].length} questions)</span></span><button data-b="${escapeHtml(l)}" class="delBank">remove</button></div>`
+  ).join('');
+  el.querySelectorAll('.delBank').forEach(b=>b.addEventListener('click', ()=>{
+    delete banks[b.dataset.b];
+    save('rc_banks', banks);
+    renderBankList();
+  }));
+}
+
+// ---------- ATTENDANCE (NP = Not Present) ----------
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function npSet(rLabel){
+  const day = (attendance[rLabel] || {})[todayStr()] || [];
+  return new Set(day);
+}
+function setNP(rLabel, name, isNP){
+  if(!attendance[rLabel]) attendance[rLabel] = {};
+  const day = todayStr();
+  let arr = (attendance[rLabel][day] || []).filter(n=>n!==name);
+  if(isNP) arr.push(name);
+  attendance[rLabel][day] = arr;
+  save('rc_attendance', attendance);
+}
+function npDays(rLabel, name){
+  const a = attendance[rLabel] || {};
+  return Object.keys(a).filter(d=>a[d].includes(name)).length;
+}
+
+// ---------- PRACTICE ----------
+function refreshPracticeSelects(){
+  const rSel = document.getElementById('pRoster');
+  const bSel = document.getElementById('pBank');
+  const prevR = rSel.value, prevB = bSel.value;
+  const rLabels = Object.keys(rosters);
+  const bLabels = Object.keys(banks);
+  rSel.innerHTML = rLabels.length ? rLabels.map(l=>`<option value="${escapeAttr(l)}">${escapeHtml(l)}</option>`).join('') : '<option value="">No rosters saved yet</option>';
+  bSel.innerHTML = bLabels.length ? bLabels.map(l=>`<option value="${escapeAttr(l)}">${escapeHtml(l)}</option>`).join('') : '<option value="">No question banks saved yet</option>';
+  if(rLabels.includes(prevR)) rSel.value = prevR;
+  if(bLabels.includes(prevB)) bSel.value = prevB;
+  document.getElementById('callBtn').disabled = !(rLabels.length && bLabels.length);
+  document.getElementById('pickOnce').checked = !!pickOnce;
+  refreshAttendanceUI();
+}
+document.getElementById('pRoster').addEventListener('change', refreshAttendanceUI);
+document.getElementById('pBank').addEventListener('change', refreshAttendanceUI);
+
+document.getElementById('pickOnce').addEventListener('change', (e)=>{
+  pickOnce = e.target.checked;
+  save('rc_once', pickOnce);
+  renderSessionInfo();
+});
+
+function cycleKey(){
+  return document.getElementById('pRoster').value + '::' + document.getElementById('pBank').value;
+}
+function getCycle(){
+  const key = cycleKey();
+  if(!cycle[key]) cycle[key] = { usedQuestions: [] };
+  return cycle[key];
+}
+// The session list is everyone called in ANY quiz today for this roster. It starts fresh each new day.
+function getSession(rLabel){
+  const today = todayStr();
+  if(!session[rLabel] || session[rLabel].date !== today) session[rLabel] = { date: today, used: [] };
+  return session[rLabel];
+}
+
+function renderChips(){
+  const rLabel = document.getElementById('pRoster').value;
+  const box = document.getElementById('npChips');
+  if(!rLabel || !rosters[rLabel]){ box.innerHTML = ''; return; }
+  const np = npSet(rLabel);
+  box.innerHTML = rosters[rLabel].map(n=>
+    `<button type="button" class="chip${np.has(n)?' np':''}" data-n="${escapeAttr(n)}">${escapeHtml(n)}${np.has(n)?'<span class="tag">NP</span>':''}</button>`
+  ).join('');
+  box.querySelectorAll('.chip').forEach(b=>b.addEventListener('click', ()=>{
+    const name = b.dataset.n;
+    setNP(rLabel, name, !npSet(rLabel).has(name));
+    refreshAttendanceUI();
+  }));
+}
+
+function renderSessionInfo(){
+  const el = document.getElementById('sessionInfo');
+  const rLabel = document.getElementById('pRoster').value;
+  if(!rLabel || !rosters[rLabel]){ el.innerHTML = ''; return; }
+  const np = npSet(rLabel);
+  const present = rosters[rLabel].filter(n=>!np.has(n));
+  const s = getSession(rLabel);
+  const picked = s.used.filter(n=>present.includes(n));
+  el.innerHTML =
+    `Picked so far today: <strong>${picked.length}</strong> of ${present.length} present &nbsp;&bull;&nbsp; ` +
+    `Not yet picked: <strong>${present.length - picked.length}</strong> &nbsp;&bull;&nbsp; <strong>${np.size}</strong> NP` +
+    (pickOnce ? '' : '<br>Picks are still recorded, so you can turn this on later.') +
+    (picked.length ? `<details><summary>See who has been picked today</summary><div class="names">${picked.map(escapeHtml).join(', ')}</div></details>` : '');
+}
+
+function refreshAttendanceUI(){
+  const rLabel = document.getElementById('pRoster').value;
+  const n = rLabel ? npSet(rLabel).size : 0;
+  const pill = document.getElementById('npCount');
+  pill.textContent = n + ' NP';
+  pill.classList.toggle('has-np', n > 0);
+  renderChips();
+  renderSessionInfo();
+}
+
+document.getElementById('allPresent').addEventListener('click', ()=>{
+  const rLabel = document.getElementById('pRoster').value;
+  if(!rLabel) return;
+  if(!attendance[rLabel]) attendance[rLabel] = {};
+  attendance[rLabel][todayStr()] = [];
+  save('rc_attendance', attendance);
+  refreshAttendanceUI();
+});
+
+document.getElementById('resetQuestions').addEventListener('click', ()=>{
+  cycle[cycleKey()] = { usedQuestions: [] };
+  save('rc_cycle', cycle);
+  document.getElementById('stage').innerHTML = '<p class="empty">Questions for this topic were reset.</p>';
+});
+
+document.getElementById('resetPicked').addEventListener('click', ()=>{
+  const rLabel = document.getElementById('pRoster').value;
+  if(!rLabel) return;
+  session[rLabel] = { date: todayStr(), used: [] };
+  save('rc_session', session);
+  document.getElementById('stage').innerHTML = '<p class="empty">Picked list cleared. Every present student can be picked again.</p>';
+  renderSessionInfo();
+});
+
+// Picks (and records) one student. Skips anyone marked NP.
+// Returns { student } or { none: 'np' } (nobody present) or { none: 'done' } (everyone present already picked once).
+function chooseStudent(rLabel){
+  const names = rosters[rLabel] || [];
+  const np = npSet(rLabel);
+  const present = names.filter(n=>!np.has(n));
+  if(!present.length) return { none: 'np' };
+  const s = getSession(rLabel);
+  const available = pickOnce ? present.filter(n=>!s.used.includes(n)) : present.slice();
+  if(!available.length) return { none: 'done' };
+  const student = available[Math.floor(Math.random()*available.length)];
+  if(!s.used.includes(student)) s.used.push(student);   // always recorded, so the box can be turned on later
+  save('rc_session', session);
+  return { student };
+}
+// Used when a called student turns out to be absent: they were never really picked.
+function unrecord(rLabel, student){
+  const s = getSession(rLabel);
+  s.used = s.used.filter(n=>n!==student);
+  save('rc_session', session);
+}
+function chooseQuestionIndex(bLabel){
+  const questions = banks[bLabel];
+  const c = getCycle();
+  let qAvailable = questions.map((_,i)=>i).filter(i=>!c.usedQuestions.includes(i));
+  if(!qAvailable.length){ c.usedQuestions = []; qAvailable = questions.map((_,i)=>i); }
+  const qi = qAvailable[Math.floor(Math.random()*qAvailable.length)];
+  c.usedQuestions.push(qi);
+  save('rc_cycle', cycle);
+  return qi;
+}
+function noneMessage(kind){
+  return kind === 'done'
+    ? '<p class="empty">Everyone present has been picked once. Click "Reset picked students" to start over, or uncheck "Pick each student only once."</p>'
+    : '<p class="empty">Everyone on this roster is marked NP. Nobody to call.</p>';
+}
+
+document.getElementById('callBtn').addEventListener('click', ()=>{
+  const rLabel = document.getElementById('pRoster').value;
+  const bLabel = document.getElementById('pBank').value;
+  if(!rLabel || !bLabel) return;
+  const pick = chooseStudent(rLabel);
+  if(pick.none){
+    document.getElementById('stage').innerHTML = noneMessage(pick.none);
+    refreshAttendanceUI();
+    return;
+  }
+  const question = banks[bLabel][chooseQuestionIndex(bLabel)];
+  renderStage(rLabel, pick.student, bLabel, question, '');
+  refreshAttendanceUI();
+  scrollToStage();
+});
+
+function renderStage(rLabel, student, bLabel, question, note){
+  const letters = ['A','B','C','D'];
+  const stage = document.getElementById('stage');
+  stage.innerHTML = `
+    ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
+    <div class="namecard">${escapeHtml(student)}</div>
+    <div class="qcard">
+      <div class="topic">${escapeHtml(bLabel)}</div>
+      <div class="qtext">${escapeHtml(question.q)}</div>
+      ${question.choices.map((c,i)=>`<div class="choice" data-i="${i}"><span class="letter">${letters[i]}</span><span>${escapeHtml(c)}</span></div>`).join('')}
+    </div>
+    <div class="reveal-row">
+      <button class="btn secondary" id="revealBtn">Reveal answer</button>
+      <button class="btn secondary" id="npBtn">Not here: mark NP and pick again</button>
+    </div>
+    <div class="score-row" id="scoreRow" style="display:none;">
+      <button class="btn" id="markCorrect">Got it right (+1)</button>
+      <button class="btn secondary" id="markWrong">Missed it</button>
+    </div>
+  `;
+  document.getElementById('revealBtn').addEventListener('click', ()=>{
+    stage.querySelectorAll('.choice')[question.correct].classList.add('correct');
+    document.getElementById('revealBtn').style.display = 'none';
+    document.getElementById('npBtn').style.display = 'none';
+    document.getElementById('scoreRow').style.display = 'flex';
+  });
+  document.getElementById('npBtn').addEventListener('click', ()=>{
+    setNP(rLabel, student, true);
+    unrecord(rLabel, student);
+    const next = chooseStudent(rLabel);
+    if(next.none){
+      stage.innerHTML = next.none === 'np'
+        ? '<p class="empty">Everyone else is marked NP. Nobody left to call.</p>'
+        : '<p class="empty">' + escapeHtml(student) + ' marked NP. Everyone else present has already been picked once.</p>';
+    } else {
+      renderStage(rLabel, next.student, bLabel, question, student + ' marked NP. Picked someone else (same question).');
+    }
+    refreshAttendanceUI();
+    scrollToStage();
+  });
+  document.getElementById('markCorrect').addEventListener('click', ()=> recordPoint(rLabel, student, true));
+  document.getElementById('markWrong').addEventListener('click', ()=> recordPoint(rLabel, student, false));
+}
+
+function recordPoint(rLabel, student, correct){
+  if(!points[rLabel]) points[rLabel] = {};
+  if(!points[rLabel][student]) points[rLabel][student] = {points:0, correct:0, called:0};
+  const rec = points[rLabel][student];
+  rec.called += 1;
+  if(correct){ rec.correct += 1; rec.points += 1; }
+  save('rc_points', points);
+  document.getElementById('scoreRow').innerHTML = `<span class="hint" style="margin:0;">${correct ? 'Nice — point added.' : 'Marked, no point this time.'}</span>`;
+}
+
+// ---------- SCOREBOARD ----------
+function refreshScoreSelects(){
+  const sSel = document.getElementById('sRoster');
+  const rLabels = Object.keys(rosters);
+  const prevVal = sSel.value;
+  sSel.innerHTML = rLabels.length ? rLabels.map(l=>`<option value="${escapeAttr(l)}">${escapeHtml(l)}</option>`).join('') : '<option value="">No rosters saved yet</option>';
+  if(rLabels.includes(prevVal)) sSel.value = prevVal;
+  renderScoreTable();
+}
+document.getElementById('sRoster').addEventListener('change', renderScoreTable);
+
+function renderScoreTable(){
+  const rLabel = document.getElementById('sRoster').value;
+  const tbody = document.querySelector('#scoreTable tbody');
+  tbody.innerHTML = '';
+  if(!rLabel || !rosters[rLabel]) return;
+  const names = rosters[rLabel];
+  const data = points[rLabel] || {};
+  const np = npSet(rLabel);
+  names.forEach(name=>{
+    const rec = data[name] || {points:0, correct:0, called:0};
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(name)}${np.has(name)?'<span class="npbadge">NP today</span>':''}</td><td class="num">${rec.correct}</td><td class="num">${rec.called}</td><td class="num">${rec.points}</td><td class="num">${npDays(rLabel, name)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function buildScoreCsv(rLabel){
+  const names = rosters[rLabel] || [];
+  const data = points[rLabel] || {};
+  let csv = 'student,correct,called,points,np_days\n';
+  names.forEach(name=>{
+    const rec = data[name] || {points:0, correct:0, called:0};
+    csv += `"${name.replace(/"/g,'""')}",${rec.correct},${rec.called},${rec.points},${npDays(rLabel, name)}\n`;
+  });
+  return csv;
+}
+
+document.getElementById('exportCsv').addEventListener('click', ()=>{
+  const rLabel = document.getElementById('sRoster').value;
+  if(!rLabel){ return; }
+  const blob = new Blob([buildScoreCsv(rLabel)], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = rLabel.replace(/[^a-z0-9]+/gi,'-').toLowerCase() + '-scoreboard.csv';
+  a.click();
+});
+
+// ---------- utils ----------
+function scrollToStage(){
+  const el = document.getElementById('stage');
+  if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'start'});
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s){ return escapeHtml(s); }
+
+// ---------- init ----------
+renderRosterList();
+renderBankList();
+refreshPracticeSelects();
+refreshScoreSelects();
+</script>
+</body>
+</html>
