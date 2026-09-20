@@ -298,7 +298,7 @@
   <!-- PRACTICE -->
   <section class="panel" id="tab-practice">
     <h2>Call on someone</h2>
-    <p class="hint">Pick a roster and a topic, then call. Students marked NP (Not Present) are skipped. Within one quiz, nobody is called twice until everyone present has had a turn; questions don't repeat until the bank is used up.</p>
+    <p class="hint">Pick a roster and a topic, then call. Students marked NP (Not Present) are skipped. Questions don't repeat until the bank is used up.</p>
 
     <div class="field">
       <label for="pRoster">Roster</label>
@@ -317,15 +317,15 @@
     </details>
 
     <div class="optbox">
-      <label class="check"><input type="checkbox" id="carryPrior"> Carry over from earlier quizzes today: skip students already called</label>
-      <p class="hint" style="margin:8px 0 0;">Unchecked: every quiz starts with a fresh list. Checked: students called in any earlier quiz today are skipped until everyone present has had a turn.</p>
+      <label class="check"><input type="checkbox" id="pickOnce"> Pick each student only once</label>
+      <p class="hint" style="margin:8px 0 0;">Unchecked: any present student can be picked again, even in the same quiz. Checked: each present student is picked only once, across every quiz today, until you click Reset picked students. The list also starts fresh each new day.</p>
       <div class="sessioninfo" id="sessionInfo"></div>
     </div>
 
     <div class="row">
       <button class="btn" id="callBtn">Call on a random student</button>
-      <button class="btn secondary" id="resetCycle">Reset this quiz</button>
-      <button class="btn secondary" id="resetSession">Start a new session</button>
+      <button class="btn secondary" id="resetPicked">Reset picked students</button>
+      <button class="btn secondary" id="resetQuestions">Reset questions</button>
     </div>
 
     <div class="stage" id="stage">
@@ -521,10 +521,10 @@ function save(key, val){
 let rosters    = load('rc_rosters', {});     // { label: [names] }
 let banks      = load('rc_banks', {});       // { label: [{q, choices:[a,b,c,d], correct:0-3}] }
 let points     = load('rc_points', {});      // { rosterLabel: { name: {points, correct, called} } }
-let cycle      = load('rc_cycle', {});       // { "roster::topic": { usedStudents:[], usedQuestions:[] } }  (one list per quiz)
+let cycle      = load('rc_cycle', {});       // { "roster::topic": { usedQuestions:[] } }  (question no-repeat list, one per topic)
 let attendance = load('rc_attendance', {});  // { rosterLabel: { 'YYYY-MM-DD': [names marked NP] } }
-let session    = load('rc_session', {});     // { rosterLabel: { date, used:[names called in ANY quiz that day] } }
-let carryPrior = load('rc_carry', false);    // true = skip students already called in earlier quizzes today
+let session    = load('rc_session', {});     // { rosterLabel: { date, used:[names picked in ANY quiz that day] } }
+let pickOnce   = load('rc_once', false);     // false = students can be picked again; true = each present student is picked only once
 
 // ---------- tabs ----------
 document.querySelectorAll('.tab-btn').forEach(btn=>{
@@ -719,15 +719,15 @@ function refreshPracticeSelects(){
   if(rLabels.includes(prevR)) rSel.value = prevR;
   if(bLabels.includes(prevB)) bSel.value = prevB;
   document.getElementById('callBtn').disabled = !(rLabels.length && bLabels.length);
-  document.getElementById('carryPrior').checked = !!carryPrior;
+  document.getElementById('pickOnce').checked = !!pickOnce;
   refreshAttendanceUI();
 }
 document.getElementById('pRoster').addEventListener('change', refreshAttendanceUI);
 document.getElementById('pBank').addEventListener('change', refreshAttendanceUI);
 
-document.getElementById('carryPrior').addEventListener('change', (e)=>{
-  carryPrior = e.target.checked;
-  save('rc_carry', carryPrior);
+document.getElementById('pickOnce').addEventListener('change', (e)=>{
+  pickOnce = e.target.checked;
+  save('rc_once', pickOnce);
   renderSessionInfo();
 });
 
@@ -736,7 +736,7 @@ function cycleKey(){
 }
 function getCycle(){
   const key = cycleKey();
-  if(!cycle[key]) cycle[key] = { usedStudents: [], usedQuestions: [] };
+  if(!cycle[key]) cycle[key] = { usedQuestions: [] };
   return cycle[key];
 }
 // The session list is everyone called in ANY quiz today for this roster. It starts fresh each new day.
@@ -767,14 +767,13 @@ function renderSessionInfo(){
   if(!rLabel || !rosters[rLabel]){ el.innerHTML = ''; return; }
   const np = npSet(rLabel);
   const present = rosters[rLabel].filter(n=>!np.has(n));
-  const c = getCycle();
   const s = getSession(rLabel);
-  const quizCalled = c.usedStudents.filter(n=>present.includes(n)).length;
-  const sessNames = s.used.filter(n=>present.includes(n));
+  const picked = s.used.filter(n=>present.includes(n));
   el.innerHTML =
-    `This quiz: <strong>${quizCalled}</strong> of ${present.length} present called &nbsp;&bull;&nbsp; ` +
-    `Today, all quizzes: <strong>${sessNames.length}</strong> called &nbsp;&bull;&nbsp; <strong>${np.size}</strong> NP` +
-    (sessNames.length ? `<details><summary>See who has been called today</summary><div class="names">${sessNames.map(escapeHtml).join(', ')}</div></details>` : '');
+    `Picked so far today: <strong>${picked.length}</strong> of ${present.length} present &nbsp;&bull;&nbsp; ` +
+    `Not yet picked: <strong>${present.length - picked.length}</strong> &nbsp;&bull;&nbsp; <strong>${np.size}</strong> NP` +
+    (pickOnce ? '' : '<br>Picks are still recorded, so you can turn this on later.') +
+    (picked.length ? `<details><summary>See who has been picked today</summary><div class="names">${picked.map(escapeHtml).join(', ')}</div></details>` : '');
 }
 
 function refreshAttendanceUI(){
@@ -796,53 +795,40 @@ document.getElementById('allPresent').addEventListener('click', ()=>{
   refreshAttendanceUI();
 });
 
-document.getElementById('resetCycle').addEventListener('click', ()=>{
-  const key = cycleKey();
-  cycle[key] = { usedStudents: [], usedQuestions: [] };
+document.getElementById('resetQuestions').addEventListener('click', ()=>{
+  cycle[cycleKey()] = { usedQuestions: [] };
   save('rc_cycle', cycle);
-  document.getElementById('stage').innerHTML = '<p class="empty">This quiz was reset. Call on someone to start again.</p>';
-  renderSessionInfo();
+  document.getElementById('stage').innerHTML = '<p class="empty">Questions for this topic were reset.</p>';
 });
 
-document.getElementById('resetSession').addEventListener('click', ()=>{
+document.getElementById('resetPicked').addEventListener('click', ()=>{
   const rLabel = document.getElementById('pRoster').value;
   if(!rLabel) return;
   session[rLabel] = { date: todayStr(), used: [] };
   save('rc_session', session);
-  document.getElementById('stage').innerHTML = '<p class="empty">New session started. Nobody counts as called yet today.</p>';
+  document.getElementById('stage').innerHTML = '<p class="empty">Picked list cleared. Every present student can be picked again.</p>';
   renderSessionInfo();
 });
 
-// Picks (and records) one student. Skips anyone marked NP. Returns null if nobody is present.
+// Picks (and records) one student. Skips anyone marked NP.
+// Returns { student } or { none: 'np' } (nobody present) or { none: 'done' } (everyone present already picked once).
 function chooseStudent(rLabel){
   const names = rosters[rLabel] || [];
   const np = npSet(rLabel);
   const present = names.filter(n=>!np.has(n));
-  if(!present.length) return null;
-  const c = getCycle();
+  if(!present.length) return { none: 'np' };
   const s = getSession(rLabel);
-  const skip = n => c.usedStudents.includes(n) || (carryPrior && s.used.includes(n));
-  let available = present.filter(n=>!skip(n));
-  if(!available.length){
-    // Everyone present has had a turn: begin a new round.
-    c.usedStudents = [];
-    if(carryPrior) s.used = s.used.filter(n=>!present.includes(n));
-    available = present.slice();
-  }
+  const available = pickOnce ? present.filter(n=>!s.used.includes(n)) : present.slice();
+  if(!available.length) return { none: 'done' };
   const student = available[Math.floor(Math.random()*available.length)];
-  c.usedStudents.push(student);
-  if(!s.used.includes(student)) s.used.push(student);
-  save('rc_cycle', cycle);
+  if(!s.used.includes(student)) s.used.push(student);   // always recorded, so the box can be turned on later
   save('rc_session', session);
-  return student;
+  return { student };
 }
-// Used when a called student turns out to be absent: they were never really called.
+// Used when a called student turns out to be absent: they were never really picked.
 function unrecord(rLabel, student){
-  const c = getCycle();
-  c.usedStudents = c.usedStudents.filter(n=>n!==student);
   const s = getSession(rLabel);
   s.used = s.used.filter(n=>n!==student);
-  save('rc_cycle', cycle);
   save('rc_session', session);
 }
 function chooseQuestionIndex(bLabel){
@@ -855,19 +841,24 @@ function chooseQuestionIndex(bLabel){
   save('rc_cycle', cycle);
   return qi;
 }
+function noneMessage(kind){
+  return kind === 'done'
+    ? '<p class="empty">Everyone present has been picked once. Click "Reset picked students" to start over, or uncheck "Pick each student only once."</p>'
+    : '<p class="empty">Everyone on this roster is marked NP. Nobody to call.</p>';
+}
 
 document.getElementById('callBtn').addEventListener('click', ()=>{
   const rLabel = document.getElementById('pRoster').value;
   const bLabel = document.getElementById('pBank').value;
   if(!rLabel || !bLabel) return;
-  const student = chooseStudent(rLabel);
-  if(!student){
-    document.getElementById('stage').innerHTML = '<p class="empty">Everyone on this roster is marked NP. Nobody to call.</p>';
+  const pick = chooseStudent(rLabel);
+  if(pick.none){
+    document.getElementById('stage').innerHTML = noneMessage(pick.none);
     refreshAttendanceUI();
     return;
   }
   const question = banks[bLabel][chooseQuestionIndex(bLabel)];
-  renderStage(rLabel, student, bLabel, question, '');
+  renderStage(rLabel, pick.student, bLabel, question, '');
   refreshAttendanceUI();
   scrollToStage();
 });
@@ -902,10 +893,12 @@ function renderStage(rLabel, student, bLabel, question, note){
     setNP(rLabel, student, true);
     unrecord(rLabel, student);
     const next = chooseStudent(rLabel);
-    if(!next){
-      stage.innerHTML = '<p class="empty">Everyone else is marked NP. Nobody left to call.</p>';
+    if(next.none){
+      stage.innerHTML = next.none === 'np'
+        ? '<p class="empty">Everyone else is marked NP. Nobody left to call.</p>'
+        : '<p class="empty">' + escapeHtml(student) + ' marked NP. Everyone else present has already been picked once.</p>';
     } else {
-      renderStage(rLabel, next, bLabel, question, student + ' marked NP. Picked someone else (same question).');
+      renderStage(rLabel, next.student, bLabel, question, student + ' marked NP. Picked someone else (same question).');
     }
     refreshAttendanceUI();
     scrollToStage();
