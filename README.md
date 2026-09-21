@@ -30,6 +30,7 @@ To make Git ignore them, add a file named `.gitignore` containing:
 2. On **Call on Someone**, choose a roster and a topic, then call.
 3. Mark absent students **NP** under *Attendance*, or click *Not here* on a called student to mark NP and re-pick.
 4. Set **Think time** (Off, 15, 30, 45, or 60 seconds; default 45) to give partners time to talk. The question appears with a countdown, and the student's name is revealed when the timer ends. You can pause the timer or show the name early.
-5. Check **Pick each student only once** to stop repeats: each present student is picked once, across every quiz today, until you click **Reset picked students**. Unchecked, students can be picked repeatedly.
+5. Click the **gear** in the top-right corner to change the color theme (Forest Green, Midnight Blue, Charcoal & Orange, Deep Plum, Ocean Teal, or Classroom Light). The choice is remembered on that device.
+6. Check **Pick each student only once** to stop repeats: each present student is picked once, across every quiz today, until you click **Reset picked students**. Unchecked, students can be picked repeatedly.
 
 Question-bank CSV columns: `question, choiceA, choiceB, choiceC, choiceD, correct` (correct = A, B, C, or D).

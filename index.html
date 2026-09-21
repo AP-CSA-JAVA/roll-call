@@ -6,26 +6,56 @@
 <title>Roll Call — Random Student &amp; Question Picker</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>try{var __t=JSON.parse(localStorage.getItem('rc_theme')||'null'); if(__t) document.documentElement.setAttribute('data-theme', __t);}catch(e){}</script>
 <style>
   :root{
-    --bg: #16241c;
-    --panel: #1f3d2e;
-    --panel-raised: #274a38;
-    --chalk: #f2efe3;
-    --chalk-dim: #b9c4ba;
-    --rule: #3a5b47;
-    --yellow: #e8b923;
-    --yellow-dim: #a9860f;
-    --green: #7fb37a;
-    --red: #d9694f;
     --radius: 6px;
     --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Consolas, monospace;
     --display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   }
-  @media (prefers-color-scheme: light){
-    :root:not([data-theme="dark"]){
-      --bg:#16241c; --panel:#1f3d2e; --panel-raised:#274a38; --chalk:#f2efe3;
-    }
+  /* ---- color themes. Variable names are historical: --yellow is the accent color, --chalk is the main text color.
+        The gear menu previews each theme with a .swatch element that carries the same data-theme attribute. ---- */
+  :root, .swatch[data-theme="forest"]{            /* Forest Green (default) */
+    --bg: #16241c; --panel: #1f3d2e; --panel-raised: #274a38;
+    --chalk: #f2efe3; --chalk-dim: #b9c4ba; --rule: #3a5b47;
+    --yellow: #e8b923; --yellow-dim: #a9860f; --green: #7fb37a; --red: #d9694f;
+    --on-accent: #1a1206; --on-red: #2a0d05; --correct-bg: rgba(127,179,122,0.12);
+    color-scheme: dark;
+  }
+  :root[data-theme="midnight"], .swatch[data-theme="midnight"]{   /* Midnight Blue */
+    --bg: #0f1a2b; --panel: #172a45; --panel-raised: #1e3558;
+    --chalk: #eef2f8; --chalk-dim: #aab7cb; --rule: #2c4a74;
+    --yellow: #6cc4ff; --yellow-dim: #5aaee6; --green: #6fcf97; --red: #ff7a66;
+    --on-accent: #06202f; --on-red: #2a0d05; --correct-bg: rgba(111,207,151,0.13);
+    color-scheme: dark;
+  }
+  :root[data-theme="charcoal"], .swatch[data-theme="charcoal"]{   /* Charcoal & Orange */
+    --bg: #1a1a1c; --panel: #28282b; --panel-raised: #323236;
+    --chalk: #f1efea; --chalk-dim: #b5b3ad; --rule: #46464b;
+    --yellow: #ff8f3f; --yellow-dim: #e07a2c; --green: #8bc48a; --red: #f0705a;
+    --on-accent: #1f1004; --on-red: #2a0d05; --correct-bg: rgba(139,196,138,0.13);
+    color-scheme: dark;
+  }
+  :root[data-theme="plum"], .swatch[data-theme="plum"]{           /* Deep Plum */
+    --bg: #1d1426; --panel: #2e2040; --panel-raised: #3a2952;
+    --chalk: #f4eef8; --chalk-dim: #c3b6d0; --rule: #56406f;
+    --yellow: #f3c969; --yellow-dim: #d1a640; --green: #8fd19e; --red: #ff7f8a;
+    --on-accent: #231803; --on-red: #2a0508; --correct-bg: rgba(143,209,158,0.13);
+    color-scheme: dark;
+  }
+  :root[data-theme="teal"], .swatch[data-theme="teal"]{           /* Ocean Teal */
+    --bg: #0e2426; --panel: #15393c; --panel-raised: #1b4a4e;
+    --chalk: #eef7f5; --chalk-dim: #a9c4c1; --rule: #2f6367;
+    --yellow: #ff9e7a; --yellow-dim: #e58860; --green: #7fd1a0; --red: #ff8a72;
+    --on-accent: #2a1005; --on-red: #2a0d05; --correct-bg: rgba(127,209,160,0.13);
+    color-scheme: dark;
+  }
+  :root[data-theme="paper"], .swatch[data-theme="paper"]{         /* Classroom Light */
+    --bg: #f3efe4; --panel: #ffffff; --panel-raised: #ece6d6;
+    --chalk: #1d2a23; --chalk-dim: #56635b; --rule: #d6cfbc;
+    --yellow: #1f6b47; --yellow-dim: #2c7a55; --green: #237a3b; --red: #b8412c;
+    --on-accent: #ffffff; --on-red: #ffffff; --correct-bg: rgba(35,122,59,0.12);
+    color-scheme: light;
   }
   * { box-sizing: border-box; }
   html,body{ margin:0; padding:0; }
@@ -116,7 +146,7 @@
     font-weight: 600;
     font-size: 14px;
     background: var(--yellow);
-    color: #1a1206;
+    color: var(--on-accent);
     border: none;
     border-radius: 4px;
     padding: 11px 18px;
@@ -131,7 +161,7 @@
     border: 1px solid var(--rule);
   }
   button.btn.secondary:hover{ border-color: var(--chalk-dim); }
-  button.btn.danger{ background: var(--red); color: #2a0d05; }
+  button.btn.danger{ background: var(--red); color: var(--on-red); }
   button.btn:disabled{ opacity: .5; cursor: not-allowed; }
   .row{ display:flex; gap: 10px; flex-wrap: wrap; }
   .savedlist{ margin-top: 18px; border-top: 1px solid var(--rule); padding-top: 14px; }
@@ -179,7 +209,7 @@
     font-family: var(--mono); font-weight: 700; color: var(--yellow-dim);
     flex-shrink: 0;
   }
-  .choice.correct{ border-color: var(--green); background: rgba(127,179,122,0.12); }
+  .choice.correct{ border-color: var(--green); background: var(--correct-bg); }
   .choice.correct .letter{ color: var(--green); }
   /* ---- projector text sizes: 0 small, 1 large (default), 2 extra large, 3 huge ---- */
   #stage.sz0 .qtext{ font-size: 17px; }             #stage.sz0 .choice{ font-size: 14px; }
@@ -266,11 +296,52 @@
   #stage.sz2 .timerctl .btn, #stage.sz3 .timerctl .btn{ font-size: 18px; padding: 14px 22px; }
   @keyframes namepop{ 0%{ transform: scale(.6); opacity: 0; } 60%{ transform: scale(1.08); opacity: 1; } 100%{ transform: scale(1); } }
   .namecard.pop{ animation: namepop .45s ease-out; }
+
+  /* ---- settings gear and color-theme picker ---- */
+  .wrap{ position: relative; }
+  .gearbtn{
+    position: absolute; top: 0; right: 0; z-index: 30;
+    width: 44px; height: 44px; padding: 0; display: flex; align-items: center; justify-content: center;
+    background: var(--panel); color: var(--chalk-dim); border: 1px solid var(--rule); border-radius: 50%;
+    cursor: pointer; transition: color .15s, border-color .15s, transform .3s;
+  }
+  .gearbtn:hover, .gearbtn[aria-expanded="true"]{ color: var(--yellow); border-color: var(--yellow); }
+  .gearbtn[aria-expanded="true"]{ transform: rotate(45deg); }
+  .gearbtn svg{ width: 22px; height: 22px; }
+  .settingspop{
+    position: absolute; top: 52px; right: 0; z-index: 40; width: min(340px, 100%);
+    background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius);
+    padding: 16px; box-shadow: 0 12px 32px rgba(0,0,0,.35);
+  }
+  .settingspop[hidden]{ display: none; }
+  .settingspop h3{ margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+  .themegrid{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .themeopt{
+    display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+    background: var(--bg); color: var(--chalk); border: 2px solid var(--rule); border-radius: 6px;
+    padding: 8px; cursor: pointer; font-family: var(--display); font-size: 13px; text-align: left;
+  }
+  .themeopt:hover{ border-color: var(--chalk-dim); }
+  .themeopt[aria-pressed="true"]{ border-color: var(--yellow); }
+  .themeopt[aria-pressed="true"] .tname::after{ content: " \2713"; color: var(--yellow); font-weight: 700; }
+  .swatch{ display: inline-flex; gap: 4px; padding: 5px; background: var(--bg); border: 1px solid var(--rule); border-radius: 6px; }
+  .swatch i{ display: block; width: 16px; height: 22px; border-radius: 3px; }
+  .swatch i:nth-child(1){ background: var(--panel); }
+  .swatch i:nth-child(2){ background: var(--yellow); }
+  .swatch i:nth-child(3){ background: var(--chalk); }
   @media (prefers-reduced-motion: reduce){ .namecard.pop{ animation: none; } .timerfill{ transition: none; } }
 </style>
 </head>
 <body>
 <div class="wrap">
+  <button type="button" class="gearbtn" id="gearBtn" aria-label="Settings: color theme" aria-haspopup="dialog" aria-expanded="false" aria-controls="settingsPop" title="Settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
+  <div class="settingspop" id="settingsPop" role="dialog" aria-label="Settings" hidden>
+    <h3>Color theme</h3>
+    <p class="hint" style="margin:0;">Pick the look that works best in your room. Saved on this device.</p>
+    <div class="themegrid" id="themeGrid"></div>
+  </div>
   <header>
     <h1>Roll Call</h1>
     <p>Load a roster, load a question bank, and let it pick who answers what. Everything below is saved on this device only.</p>
@@ -586,6 +657,48 @@ let stageSize  = load('rc_size', 1);         // question text size: 0 small, 1 l
 let thinkSecs  = load('rc_think', 45);       // partner-talk timer before the name is revealed: 0 = off, max 60 (default 45)
 let chimeOn    = load('rc_chime', true);     // soft chime when the timer ends
 let pickOnce   = load('rc_once', false);     // false = students can be picked again; true = each present student is picked only once
+
+// ---------- settings gear: color themes ----------
+const THEMES = [
+  { id: 'forest',   name: 'Forest Green' },
+  { id: 'midnight', name: 'Midnight Blue' },
+  { id: 'charcoal', name: 'Charcoal & Orange' },
+  { id: 'plum',     name: 'Deep Plum' },
+  { id: 'teal',     name: 'Ocean Teal' },
+  { id: 'paper',    name: 'Classroom Light' }
+];
+let themeId = load('rc_theme', 'forest');
+if(!THEMES.some(t=>t.id===themeId)) themeId = 'forest';
+function applyTheme(){
+  document.documentElement.setAttribute('data-theme', themeId);
+  document.querySelectorAll('.themeopt').forEach(b=> b.setAttribute('aria-pressed', String(b.dataset.theme === themeId)));
+}
+(function buildThemeGrid(){
+  const grid = document.getElementById('themeGrid');
+  grid.innerHTML = THEMES.map(t=>
+    `<button type="button" class="themeopt" data-theme="${t.id}" aria-pressed="false">
+       <span class="swatch" data-theme="${t.id}"><i></i><i></i><i></i></span>
+       <span class="tname">${escapeHtml(t.name)}</span>
+     </button>`).join('');
+  grid.querySelectorAll('.themeopt').forEach(b=> b.addEventListener('click', ()=>{
+    themeId = b.dataset.theme;
+    save('rc_theme', themeId);
+    applyTheme();
+  }));
+})();
+(function gearMenu(){
+  const btn = document.getElementById('gearBtn'), pop = document.getElementById('settingsPop');
+  function setOpen(open, returnFocus){
+    pop.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+    if(open){ const cur = pop.querySelector('.themeopt[aria-pressed="true"]') || pop.querySelector('.themeopt'); if(cur) cur.focus(); }
+    else if(returnFocus){ btn.focus(); }
+  }
+  btn.addEventListener('click', ()=> setOpen(pop.hidden));
+  document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape' && !pop.hidden) setOpen(false, true); });
+  document.addEventListener('click', (e)=>{ if(!pop.hidden && !pop.contains(e.target) && !btn.contains(e.target)) setOpen(false); });
+})();
+applyTheme();
 
 // ---------- tabs ----------
 document.querySelectorAll('.tab-btn').forEach(btn=>{
