@@ -177,7 +177,15 @@
     font-family: var(--mono); font-size: 12px; cursor:pointer;
   }
   .status{ font-family: var(--mono); font-size: 13px; color: var(--yellow); margin-top: 10px; min-height: 18px; }
-  select#pRoster, select#pBank{ margin-bottom: 10px; }
+  select#pRoster, select#pBank{ margin-bottom: 0; }
+  /* ---- Call on Someone: compact setup ---- */
+  .selrow{ display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 4px; }
+  @media (max-width: 600px){ .selrow{ grid-template-columns: 1fr; gap: 0; } }
+  .setup details.attend{ margin-bottom: 8px; padding: 9px 14px; }
+  .optdivider{ border-top: 1px solid var(--rule); margin: 14px 0 12px; }
+  .callrow{ margin-top: 14px; }
+  .setupsummary{ font-family: var(--mono); font-size: 12px; color: var(--chalk-dim); margin-top: 12px; line-height: 1.6; }
+  #sessionInfo{ margin-top: 2px; }
   .stage{
     text-align: center;
     padding: 28px 10px 10px;
@@ -414,61 +422,68 @@
   <!-- PRACTICE -->
   <section class="panel" id="tab-practice">
     <h2>Call on someone</h2>
-    <p class="hint">Pick a roster and a topic, then call. Set a think time and the question shows first, with the name revealed when the timer ends. Students marked NP (Not Present) are skipped. Questions don't repeat until the bank is used up.</p>
+    <p class="hint" style="margin-bottom:12px;">Pick a roster and a topic, then call. Everything else is tucked into the sections below; open one only when you need it.</p>
 
-    <div class="field">
-      <label for="pRoster">Roster</label>
-      <select id="pRoster"></select>
-    </div>
-    <div class="field">
-      <label for="pBank">Topic (quiz)</label>
-      <select id="pBank"></select>
-    </div>
-
-    <details class="attend" id="qPanel">
-      <summary>Choose questions <span class="pill" id="qCount"></span></summary>
-      <p class="hint" style="margin-top:10px;">Only checked questions are asked. Every question in the topic starts checked. Your choices are remembered for that topic.</p>
-      <div id="qChoices"></div>
-      <div class="row"><button class="btn secondary" id="qAll">Check all</button></div>
-    </details>
-
-    <details class="attend" id="attendPanel">
-      <summary>Attendance <span class="pill" id="npCount">0 NP</span></summary>
-      <p class="hint" style="margin-top:10px;">Tap a name to mark that student <strong>NP</strong> (Not Present). NP students are skipped when calling. Attendance starts fresh each day.</p>
-      <div class="chips" id="npChips"></div>
-      <div class="row"><button class="btn secondary" id="allPresent">Mark everyone present</button></div>
-    </details>
-
-    <div class="optbox">
-      <label class="check"><input type="checkbox" id="pickOnce"> Pick each student only once</label>
-      <p class="hint" style="margin:8px 0 0;">Unchecked: any present student can be picked again, even in the same quiz. Checked: each present student is picked only once, across every quiz today, until you click Reset picked students. The list also starts fresh each new day.</p>
-      <label class="check" style="margin-top:12px;"><input type="checkbox" id="retryMissed"> Students who miss stay in the pool (up to 2 tries)</label>
-      <p class="hint" style="margin:8px 0 0;">Works with "Pick each student only once." A student who misses a question goes back on the list for another try today, usually with a different question. A right answer, or a second miss, takes them off the list.</p>
-      <div class="sessioninfo" id="sessionInfo"></div>
-    </div>
-
-    <div class="optbox">
-      <div class="thinkrow">
-        <label class="inline" for="thinkSecs">Think time
-          <select id="thinkSecs">
-            <option value="0">Off</option>
-            <option value="15">15 sec</option>
-            <option value="30">30 sec</option>
-            <option value="45">45 sec</option>
-            <option value="60">60 sec</option>
-          </select>
-        </label>
-        <label class="check"><input type="checkbox" id="chimeOn"> Chime when time is up</label>
+    <div class="selrow">
+      <div class="field">
+        <label for="pRoster">Roster</label>
+        <select id="pRoster"></select>
       </div>
-      <p class="hint" style="margin:8px 0 0;">With think time on, the question appears first and the timer counts down while students discuss. The student's name is revealed when the timer ends. The maximum is 60 seconds.</p>
+      <div class="field">
+        <label for="pBank">Topic (quiz)</label>
+        <select id="pBank"></select>
+      </div>
     </div>
 
-    <div class="row">
+    <div class="setup" id="setupGroup">
+      <details class="attend" id="qPanel">
+        <summary>Choose questions <span class="pill" id="qCount"></span></summary>
+        <p class="hint" style="margin-top:10px;">Only checked questions are asked. Every question in the topic starts checked. Your choices are remembered for that topic.</p>
+        <div id="qChoices"></div>
+        <div class="row"><button class="btn secondary" id="qAll">Check all</button></div>
+      </details>
+
+      <details class="attend" id="attendPanel">
+        <summary>Attendance <span class="pill" id="npCount">0 NP</span></summary>
+        <p class="hint" style="margin-top:10px;">Tap a name to mark that student <strong>NP</strong> (Not Present). NP students are skipped when calling. Attendance starts fresh each day.</p>
+        <div class="chips" id="npChips"></div>
+        <div class="row"><button class="btn secondary" id="allPresent">Mark everyone present</button></div>
+      </details>
+
+      <details class="attend" id="optPanel">
+        <summary>Options <span class="pill" id="optPill"></span></summary>
+        <div style="margin-top:12px;">
+          <label class="check"><input type="checkbox" id="pickOnce"> Pick each student only once</label>
+          <p class="hint" style="margin:8px 0 0;">Unchecked: any present student can be picked again, even in the same quiz. Checked: each present student is picked only once, across every quiz today, until you click Reset picked students. The list also starts fresh each new day.</p>
+          <label class="check" style="margin-top:12px;"><input type="checkbox" id="retryMissed"> Students who miss stay in the pool (up to 2 tries)</label>
+          <p class="hint" style="margin:8px 0 0;">Works with "Pick each student only once." A student who misses a question goes back on the list for another try today, usually with a different question. A right answer, or a second miss, takes them off the list.</p>
+        </div>
+        <div class="optdivider"></div>
+        <div class="thinkrow">
+          <label class="inline" for="thinkSecs">Think time
+            <select id="thinkSecs">
+              <option value="0">Off</option>
+              <option value="15">15 sec</option>
+              <option value="30">30 sec</option>
+              <option value="45">45 sec</option>
+              <option value="60">60 sec</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" id="chimeOn"> Chime when time is up</label>
+        </div>
+        <p class="hint" style="margin:8px 0 0;">With think time on, the question appears first and the timer counts down while students discuss. The student's name is revealed when the timer ends. The maximum is 60 seconds.</p>
+      </details>
+    </div>
+
+    <div class="row callrow">
       <button class="btn" id="callBtn">Call on a random student</button>
       <button class="btn secondary" id="resetPicked">Reset picked students</button>
       <button class="btn secondary" id="resetQuestions">Reset questions</button>
       <div class="sizectl">Text size <button type="button" id="sizeDown" title="Smaller text">A&minus;</button><button type="button" id="sizeUp" title="Larger text">A+</button></div>
     </div>
+
+    <div class="setupsummary" id="setupSummary"></div>
+    <div class="sessioninfo" id="sessionInfo"></div>
 
     <div class="stage sz1" id="stage">
       <p class="empty">Nobody's been called yet.</p>
@@ -939,13 +954,37 @@ document.getElementById('retryMissed').addEventListener('change', (e)=>{
   retryMissed = e.target.checked;
   save('rc_retry', retryMissed);
   renderSessionInfo();
+  renderSetupSummary();
 });
 
 document.getElementById('pickOnce').addEventListener('change', (e)=>{
   pickOnce = e.target.checked;
   save('rc_once', pickOnce);
   renderSessionInfo();
+  renderSetupSummary();
 });
+
+// One-line status under the Call button, plus a short pill on the Options bar, so settings can be checked without opening anything.
+function renderSetupSummary(){
+  const rLabel = document.getElementById('pRoster').value;
+  const bLabel = document.getElementById('pBank').value;
+  const box = document.getElementById('setupSummary');
+  const pill = document.getElementById('optPill');
+  const bits = [];
+  if(thinkSecs > 0) bits.push(thinkSecs + ' sec think'); else bits.push('no timer');
+  if(pickOnce) bits.push(retryMissed ? 'each once + retry' : 'each once');
+  pill.textContent = bits.join(' · ');
+  if(!rLabel || !bLabel || !rosters[rLabel] || !banks[bLabel]){ box.textContent = ''; return; }
+  const total = banks[bLabel].length;
+  const on = enabledIdx(bLabel).length;
+  const np = npSet(rLabel).size;
+  box.textContent = [rLabel, bLabel, on + ' of ' + total + ' questions', np + ' NP'].concat(bits).join(' · ');
+}
+// Setup sections behave like an accordion: opening one closes the others, and pressing Call closes them all.
+function closeSetupPanels(except){
+  document.querySelectorAll('#setupGroup details').forEach(d=>{ if(d !== except) d.open = false; });
+}
+document.querySelectorAll('#setupGroup details').forEach(d=>d.addEventListener('toggle', ()=>{ if(d.open) closeSetupPanels(d); }));
 
 function cycleKey(){
   return document.getElementById('pRoster').value + '::' + document.getElementById('pBank').value;
@@ -1002,6 +1041,7 @@ function refreshAttendanceUI(){
   pill.classList.toggle('has-np', n > 0);
   renderChips();
   renderSessionInfo();
+  renderSetupSummary();
 }
 
 document.getElementById('allPresent').addEventListener('click', ()=>{
@@ -1068,6 +1108,7 @@ function renderQChoices(){
     `<label class="check qpick"><input type="checkbox" data-i="${i}"${off.has(q.q) ? '' : ' checked'}><span>${i+1}. ${escapeHtml(q.q.length > 110 ? q.q.slice(0,110) + '…' : q.q)}</span></label>`
   ).join('');
   cnt.textContent = enabledIdx(bLabel).length + ' of ' + qs.length + ' on';
+  renderSetupSummary();
   box.querySelectorAll('input').forEach(cb=>cb.addEventListener('change', ()=>{
     const list = new Set(qOff[bLabel] || []);
     const text = qs[Number(cb.dataset.i)].q;
@@ -1108,6 +1149,7 @@ document.getElementById('chimeOn').checked = !!chimeOn;
 document.getElementById('thinkSecs').addEventListener('change', (e)=>{
   thinkSecs = Math.max(0, Math.min(60, Number(e.target.value) || 0));
   save('rc_think', thinkSecs);
+  renderSetupSummary();
 });
 document.getElementById('chimeOn').addEventListener('change', (e)=>{
   chimeOn = e.target.checked;
@@ -1181,6 +1223,7 @@ document.getElementById('callBtn').addEventListener('click', ()=>{
   if(!rLabel || !bLabel) return;
   stopTimer();
   primeAudio();
+  closeSetupPanels();
   if(!enabledIdx(bLabel).length){
     document.getElementById('stage').innerHTML = '<p class="empty">No questions are checked for this topic. Open "Choose questions" and check at least one.</p>';
     return;
