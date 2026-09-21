@@ -29,6 +29,7 @@ To make Git ignore them, add a file named `.gitignore` containing:
 1. Open the published page and use the **Rosters** and **Question Banks** tabs to load your class and questions.
 2. On **Call on Someone**, choose a roster and a topic, then call.
 3. Mark absent students **NP** under *Attendance*, or click *Not here* on a called student to mark NP and re-pick.
-4. Check **Pick each student only once** to stop repeats: each present student is picked once, across every quiz today, until you click **Reset picked students**. Unchecked, students can be picked repeatedly.
+4. Set **Think time** (Off, 15, 30, 45, or 60 seconds; default 45) to give partners time to talk. The question appears with a countdown, and the student's name is revealed when the timer ends. You can pause the timer or show the name early.
+5. Check **Pick each student only once** to stop repeats: each present student is picked once, across every quiz today, until you click **Reset picked students**. Unchecked, students can be picked repeatedly.
 
 Question-bank CSV columns: `question, choiceA, choiceB, choiceC, choiceD, correct` (correct = A, B, C, or D).

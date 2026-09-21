@@ -240,6 +240,33 @@
   .sessioninfo .names{ margin-top: 6px; color: var(--chalk); }
   .notice{ font-family: var(--mono); font-size: 12px; color: var(--red); margin: -10px 0 14px; }
   .npbadge{ font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--red); margin-left: 6px; }
+
+  /* ---- think time (partner talk) timer ---- */
+  .thinkrow{ display:flex; align-items:center; gap: 14px; flex-wrap: wrap; }
+  .thinkrow label.inline{ font-family: var(--display); font-size: 14px; color: var(--chalk); display:flex; align-items:center; gap: 8px; }
+  .thinkrow select{ width:auto; min-width: 110px; }
+  .timerbox{ margin: 6px auto 22px; max-width: 560px; }
+  .timerlabel{ font-family: var(--mono); font-size: 14px; color: var(--chalk-dim); letter-spacing: .02em; }
+  .timernum{
+    font-family: var(--mono); font-weight: 700; color: var(--yellow);
+    font-size: 84px; line-height: 1.05; margin: 4px 0 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  .timerbar{ height: 10px; background: var(--bg); border: 1px solid var(--rule); border-radius: 999px; overflow: hidden; }
+  .timerfill{ height: 100%; width: 100%; background: var(--yellow); transition: width .25s linear; }
+  .timerbox.low .timernum{ color: var(--red); }
+  .timerbox.low .timerfill{ background: var(--red); }
+  .timerbox.paused .timernum{ opacity: .55; }
+  .timerctl{ display:flex; justify-content:center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  #stage.sz0 .timernum{ font-size: 60px; }
+  #stage.sz1 .timernum{ font-size: 110px; }
+  #stage.sz2 .timernum{ font-size: 140px; }
+  #stage.sz3 .timernum{ font-size: 170px; }
+  #stage.sz1 .timerlabel, #stage.sz2 .timerlabel, #stage.sz3 .timerlabel{ font-size: 18px; }
+  #stage.sz2 .timerctl .btn, #stage.sz3 .timerctl .btn{ font-size: 18px; padding: 14px 22px; }
+  @keyframes namepop{ 0%{ transform: scale(.6); opacity: 0; } 60%{ transform: scale(1.08); opacity: 1; } 100%{ transform: scale(1); } }
+  .namecard.pop{ animation: namepop .45s ease-out; }
+  @media (prefers-reduced-motion: reduce){ .namecard.pop{ animation: none; } .timerfill{ transition: none; } }
 </style>
 </head>
 <body>
@@ -312,7 +339,7 @@
   <!-- PRACTICE -->
   <section class="panel" id="tab-practice">
     <h2>Call on someone</h2>
-    <p class="hint">Pick a roster and a topic, then call. Students marked NP (Not Present) are skipped. Questions don't repeat until the bank is used up.</p>
+    <p class="hint">Pick a roster and a topic, then call. Set a think time and the question shows first, with the name revealed when the timer ends. Students marked NP (Not Present) are skipped. Questions don't repeat until the bank is used up.</p>
 
     <div class="field">
       <label for="pRoster">Roster</label>
@@ -334,6 +361,22 @@
       <label class="check"><input type="checkbox" id="pickOnce"> Pick each student only once</label>
       <p class="hint" style="margin:8px 0 0;">Unchecked: any present student can be picked again, even in the same quiz. Checked: each present student is picked only once, across every quiz today, until you click Reset picked students. The list also starts fresh each new day.</p>
       <div class="sessioninfo" id="sessionInfo"></div>
+    </div>
+
+    <div class="optbox">
+      <div class="thinkrow">
+        <label class="inline" for="thinkSecs">Think time
+          <select id="thinkSecs">
+            <option value="0">Off</option>
+            <option value="15">15 sec</option>
+            <option value="30">30 sec</option>
+            <option value="45">45 sec</option>
+            <option value="60">60 sec</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" id="chimeOn"> Chime when time is up</label>
+      </div>
+      <p class="hint" style="margin:8px 0 0;">With think time on, the question appears first and the timer counts down while students discuss. The student's name is revealed when the timer ends. The maximum is 60 seconds.</p>
     </div>
 
     <div class="row">
@@ -540,6 +583,8 @@ let cycle      = load('rc_cycle', {});       // { "roster::topic": { usedQuestio
 let attendance = load('rc_attendance', {});  // { rosterLabel: { 'YYYY-MM-DD': [names marked NP] } }
 let session    = load('rc_session', {});     // { rosterLabel: { date, used:[names picked in ANY quiz that day] } }
 let stageSize  = load('rc_size', 1);         // question text size: 0 small, 1 large (default), 2 extra large, 3 huge
+let thinkSecs  = load('rc_think', 45);       // partner-talk timer before the name is revealed: 0 = off, max 60 (default 45)
+let chimeOn    = load('rc_chime', true);     // soft chime when the timer ends
 let pickOnce   = load('rc_once', false);     // false = students can be picked again; true = each present student is picked only once
 
 // ---------- tabs ----------
@@ -814,6 +859,7 @@ document.getElementById('allPresent').addEventListener('click', ()=>{
 document.getElementById('resetQuestions').addEventListener('click', ()=>{
   cycle[cycleKey()] = { usedQuestions: [] };
   save('rc_cycle', cycle);
+  stopTimer();
   document.getElementById('stage').innerHTML = '<p class="empty">Questions for this topic were reset.</p>';
 });
 
@@ -822,6 +868,7 @@ document.getElementById('resetPicked').addEventListener('click', ()=>{
   if(!rLabel) return;
   session[rLabel] = { date: todayStr(), used: [] };
   save('rc_session', session);
+  stopTimer();
   document.getElementById('stage').innerHTML = '<p class="empty">Picked list cleared. Every present student can be picked again.</p>';
   renderSessionInfo();
 });
@@ -863,10 +910,86 @@ function noneMessage(kind){
     : '<p class="empty">Everyone on this roster is marked NP. Nobody to call.</p>';
 }
 
+// ---------- think-time timer ----------
+thinkSecs = Math.max(0, Math.min(60, Number(thinkSecs) || 0));
+document.getElementById('thinkSecs').value = String(thinkSecs);
+document.getElementById('chimeOn').checked = !!chimeOn;
+document.getElementById('thinkSecs').addEventListener('change', (e)=>{
+  thinkSecs = Math.max(0, Math.min(60, Number(e.target.value) || 0));
+  save('rc_think', thinkSecs);
+});
+document.getElementById('chimeOn').addEventListener('change', (e)=>{
+  chimeOn = e.target.checked;
+  save('rc_chime', chimeOn);
+});
+
+let timer = null;      // { handle, endAt, remaining, total, paused, onDone }
+let audioCtx = null;
+function primeAudio(){   // must run inside a click so the browser allows sound later
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    if(!audioCtx) audioCtx = new AC();
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+  }catch(e){}
+}
+function chime(){
+  if(!chimeOn || !audioCtx) return;
+  try{
+    [[880, 0], [1175, 0.22]].forEach(([freq, at])=>{
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      const t0 = audioCtx.currentTime + at;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.25, t0 + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.6);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t0); o.stop(t0 + 0.65);
+    });
+  }catch(e){}
+}
+function stopTimer(){
+  if(timer && timer.handle) clearInterval(timer.handle);
+  timer = null;
+}
+function startTimer(secs, onDone){
+  stopTimer();
+  const total = secs * 1000;
+  timer = { handle: null, total, remaining: total, endAt: Date.now() + total, paused: false, onDone };
+  const t = timer;
+  function draw(){
+    const num = document.getElementById('timerNum');
+    if(!num){ if(timer === t) stopTimer(); return false; }   // stage was replaced: quietly stop
+    const shown = Math.max(0, Math.ceil(t.remaining / 1000));
+    num.textContent = shown;
+    document.getElementById('timerFill').style.width = (100 * Math.max(0, t.remaining) / t.total) + '%';
+    const box = document.getElementById('timerBox');
+    box.classList.toggle('low', shown <= 10);
+    box.classList.toggle('paused', t.paused);
+    return true;
+  }
+  t.handle = setInterval(()=>{
+    if(timer !== t){ clearInterval(t.handle); return; }
+    if(t.paused) return;
+    t.remaining = t.endAt - Date.now();     // clock-based, so a throttled tab can't slow it down
+    if(!draw()) return;
+    if(t.remaining <= 0){ stopTimer(); chime(); onDone(); }
+  }, 200);
+  t.pause = ()=>{
+    if(t.paused){ t.endAt = Date.now() + t.remaining; t.paused = false; }
+    else { t.remaining = t.endAt - Date.now(); t.paused = true; }
+    draw();
+    return t.paused;
+  };
+  draw();
+}
+
 document.getElementById('callBtn').addEventListener('click', ()=>{
   const rLabel = document.getElementById('pRoster').value;
   const bLabel = document.getElementById('pBank').value;
   if(!rLabel || !bLabel) return;
+  stopTimer();
+  primeAudio();
   const pick = chooseStudent(rLabel);
   if(pick.none){
     document.getElementById('stage').innerHTML = noneMessage(pick.none);
@@ -874,23 +997,36 @@ document.getElementById('callBtn').addEventListener('click', ()=>{
     return;
   }
   const question = banks[bLabel][chooseQuestionIndex(bLabel)];
-  renderStage(rLabel, pick.student, bLabel, question, '');
+  renderStage(rLabel, pick.student, bLabel, question, '', thinkSecs);
   refreshAttendanceUI();
   scrollToStage();
 });
 
-function renderStage(rLabel, student, bLabel, question, note){
+// secs > 0: show the question and a countdown first, and hide the name until the timer ends.
+// secs = 0: show the name right away (also used when re-picking after an NP).
+function renderStage(rLabel, student, bLabel, question, note, secs){
   const letters = ['A','B','C','D'];
   const stage = document.getElementById('stage');
+  secs = Math.max(0, Math.min(60, Number(secs) || 0));
+  stopTimer();
   stage.innerHTML = `
     ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
-    <div class="namecard">${escapeHtml(student)}</div>
+    ${secs ? `<div class="timerbox" id="timerBox">
+      <div class="timerlabel">Think &amp; talk with your partner</div>
+      <div class="timernum" id="timerNum">${secs}</div>
+      <div class="timerbar"><div class="timerfill" id="timerFill"></div></div>
+      <div class="timerctl">
+        <button class="btn secondary" id="timerPause">Pause</button>
+        <button class="btn secondary" id="timerSkip">Show name now</button>
+      </div>
+    </div>` : ''}
+    <div class="namecard" id="nameCard" style="${secs ? 'display:none;' : ''}">${escapeHtml(student)}</div>
     <div class="qcard">
       <div class="topic">${escapeHtml(bLabel)}</div>
       <div class="qtext">${escapeHtml(question.q)}</div>
       ${question.choices.map((c,i)=>`<div class="choice" data-i="${i}"><span class="letter">${letters[i]}</span><span>${escapeHtml(c)}</span></div>`).join('')}
     </div>
-    <div class="reveal-row">
+    <div class="reveal-row" id="revealRow" style="${secs ? 'display:none;' : ''}">
       <button class="btn secondary" id="revealBtn">Reveal answer</button>
       <button class="btn secondary" id="npBtn">Not here: mark NP and pick again</button>
     </div>
@@ -899,6 +1035,21 @@ function renderStage(rLabel, student, bLabel, question, note){
       <button class="btn secondary" id="markWrong">Missed it</button>
     </div>
   `;
+  function showName(){
+    const tb = document.getElementById('timerBox');
+    if(tb) tb.style.display = 'none';
+    const nc = document.getElementById('nameCard');
+    if(nc){ nc.style.display = ''; nc.classList.add('pop'); }
+    const rr = document.getElementById('revealRow');
+    if(rr) rr.style.display = 'flex';
+  }
+  if(secs){
+    document.getElementById('timerPause').addEventListener('click', (e)=>{
+      if(timer) e.target.textContent = timer.pause() ? 'Resume' : 'Pause';
+    });
+    document.getElementById('timerSkip').addEventListener('click', ()=>{ stopTimer(); showName(); });
+    startTimer(secs, showName);
+  }
   document.getElementById('revealBtn').addEventListener('click', ()=>{
     stage.querySelectorAll('.choice')[question.correct].classList.add('correct');
     document.getElementById('revealBtn').style.display = 'none';
@@ -914,7 +1065,7 @@ function renderStage(rLabel, student, bLabel, question, note){
         ? '<p class="empty">Everyone else is marked NP. Nobody left to call.</p>'
         : '<p class="empty">' + escapeHtml(student) + ' marked NP. Everyone else present has already been picked once.</p>';
     } else {
-      renderStage(rLabel, next.student, bLabel, question, student + ' marked NP. Picked someone else (same question).');
+      renderStage(rLabel, next.student, bLabel, question, student + ' marked NP. Picked someone else (same question).', 0);
     }
     refreshAttendanceUI();
     scrollToStage();
