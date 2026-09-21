@@ -270,6 +270,10 @@
   .sessioninfo .names{ margin-top: 6px; color: var(--chalk); }
   .notice{ font-family: var(--mono); font-size: 12px; color: var(--red); margin: -10px 0 14px; }
   .npbadge{ font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--red); margin-left: 6px; }
+  label.qpick{ align-items: flex-start; padding: 5px 0; }
+  label.qpick input{ margin-top: 2px; }
+  td.qtxt{ font-family: var(--display); font-size: 13px; }
+  td.dim{ color: var(--chalk-dim); }
 
   /* ---- think time (partner talk) timer ---- */
   .thinkrow{ display:flex; align-items:center; gap: 14px; flex-wrap: wrap; }
@@ -421,6 +425,13 @@
       <select id="pBank"></select>
     </div>
 
+    <details class="attend" id="qPanel">
+      <summary>Choose questions <span class="pill" id="qCount"></span></summary>
+      <p class="hint" style="margin-top:10px;">Only checked questions are asked. Every question in the topic starts checked. Your choices are remembered for that topic.</p>
+      <div id="qChoices"></div>
+      <div class="row"><button class="btn secondary" id="qAll">Check all</button></div>
+    </details>
+
     <details class="attend" id="attendPanel">
       <summary>Attendance <span class="pill" id="npCount">0 NP</span></summary>
       <p class="hint" style="margin-top:10px;">Tap a name to mark that student <strong>NP</strong> (Not Present). NP students are skipped when calling. Attendance starts fresh each day.</p>
@@ -431,6 +442,8 @@
     <div class="optbox">
       <label class="check"><input type="checkbox" id="pickOnce"> Pick each student only once</label>
       <p class="hint" style="margin:8px 0 0;">Unchecked: any present student can be picked again, even in the same quiz. Checked: each present student is picked only once, across every quiz today, until you click Reset picked students. The list also starts fresh each new day.</p>
+      <label class="check" style="margin-top:12px;"><input type="checkbox" id="retryMissed"> Students who miss stay in the pool (up to 2 tries)</label>
+      <p class="hint" style="margin:8px 0 0;">Works with "Pick each student only once." A student who misses a question goes back on the list for another try today, usually with a different question. A right answer, or a second miss, takes them off the list.</p>
       <div class="sessioninfo" id="sessionInfo"></div>
     </div>
 
@@ -475,6 +488,24 @@
     </div>
     <table id="scoreTable">
       <thead><tr><th>Student</th><th class="num">Correct</th><th class="num">Called</th><th class="num">Points</th><th class="num">NP days</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="toplinks" style="margin-top:40px;">
+      <h2 style="margin:0;">Question results</h2>
+      <button class="btn secondary" id="exportLog">Export attempt log (CSV)</button>
+    </div>
+    <p class="hint">Every "Got it right" or "Missed it" you mark is counted here by question, so you can see which ideas the class is missing, not only which students. The most-missed questions are listed first. Counts start from the first question you mark after this update. The attempt log lists every answer with its date, student, topic, and question.</p>
+    <div class="field">
+      <label for="qsRoster">Roster</label>
+      <select id="qsRoster"></select>
+    </div>
+    <div class="field">
+      <label for="qsTopic">Topic</label>
+      <select id="qsTopic"></select>
+    </div>
+    <table id="qStatsTable">
+      <thead><tr><th>Question</th><th class="num">Asked</th><th class="num">Right</th><th class="num">Missed</th><th class="num">% right</th></tr></thead>
       <tbody></tbody>
     </table>
   </section>
@@ -656,6 +687,9 @@ let session    = load('rc_session', {});     // { rosterLabel: { date, used:[nam
 let stageSize  = load('rc_size', 1);         // question text size: 0 small, 1 large (default), 2 extra large, 3 huge
 let thinkSecs  = load('rc_think', 45);       // partner-talk timer before the name is revealed: 0 = off, max 60 (default 45)
 let chimeOn    = load('rc_chime', true);     // soft chime when the timer ends
+let retryMissed = load('rc_retry', false);   // with pickOnce: a student who misses goes back on the list (max 2 tries a day)
+let attemptLog  = load('rc_log', []);        // [{t, roster, topic, q, student, ok}]  one row per answer you mark
+let qOff        = load('rc_qoff', {});       // { topic: [question text switched off] }
 let pickOnce   = load('rc_once', false);     // false = students can be picked again; true = each present student is picked only once
 
 // ---------- settings gear: color themes ----------
@@ -894,10 +928,18 @@ function refreshPracticeSelects(){
   if(bLabels.includes(prevB)) bSel.value = prevB;
   document.getElementById('callBtn').disabled = !(rLabels.length && bLabels.length);
   document.getElementById('pickOnce').checked = !!pickOnce;
+  document.getElementById('retryMissed').checked = !!retryMissed;
+  renderQChoices();
+  refreshQStatSelects();
   refreshAttendanceUI();
 }
 document.getElementById('pRoster').addEventListener('change', refreshAttendanceUI);
-document.getElementById('pBank').addEventListener('change', refreshAttendanceUI);
+document.getElementById('pBank').addEventListener('change', ()=>{ renderQChoices(); refreshAttendanceUI(); });
+document.getElementById('retryMissed').addEventListener('change', (e)=>{
+  retryMissed = e.target.checked;
+  save('rc_retry', retryMissed);
+  renderSessionInfo();
+});
 
 document.getElementById('pickOnce').addEventListener('change', (e)=>{
   pickOnce = e.target.checked;
@@ -943,9 +985,11 @@ function renderSessionInfo(){
   const present = rosters[rLabel].filter(n=>!np.has(n));
   const s = getSession(rLabel);
   const picked = s.used.filter(n=>present.includes(n));
+  const back = (pickOnce && retryMissed && s.misses) ? present.filter(n=>!s.used.includes(n) && s.misses[n]).length : 0;
   el.innerHTML =
     `Picked so far today: <strong>${picked.length}</strong> of ${present.length} present &nbsp;&bull;&nbsp; ` +
     `Not yet picked: <strong>${present.length - picked.length}</strong> &nbsp;&bull;&nbsp; <strong>${np.size}</strong> NP` +
+    (back ? ` &nbsp;&bull;&nbsp; <strong>${back}</strong> back for a second try` : '') +
     (pickOnce ? '' : '<br>Picks are still recorded, so you can turn this on later.') +
     (picked.length ? `<details><summary>See who has been picked today</summary><div class="names">${picked.map(escapeHtml).join(', ')}</div></details>` : '');
 }
@@ -1007,11 +1051,45 @@ function unrecord(rLabel, student){
   s.used = s.used.filter(n=>n!==student);
   save('rc_session', session);
 }
+// Which questions in a topic are switched on (checked under "Choose questions").
+function enabledIdx(bLabel){
+  const off = new Set(qOff[bLabel] || []);
+  const qs = banks[bLabel] || [];
+  return qs.map((_,i)=>i).filter(i=>!off.has(qs[i].q));
+}
+function renderQChoices(){
+  const bLabel = document.getElementById('pBank').value;
+  const box = document.getElementById('qChoices');
+  const cnt = document.getElementById('qCount');
+  if(!bLabel || !banks[bLabel]){ box.innerHTML = ''; cnt.textContent = ''; return; }
+  const qs = banks[bLabel];
+  const off = new Set(qOff[bLabel] || []);
+  box.innerHTML = qs.map((q,i)=>
+    `<label class="check qpick"><input type="checkbox" data-i="${i}"${off.has(q.q) ? '' : ' checked'}><span>${i+1}. ${escapeHtml(q.q.length > 110 ? q.q.slice(0,110) + '…' : q.q)}</span></label>`
+  ).join('');
+  cnt.textContent = enabledIdx(bLabel).length + ' of ' + qs.length + ' on';
+  box.querySelectorAll('input').forEach(cb=>cb.addEventListener('change', ()=>{
+    const list = new Set(qOff[bLabel] || []);
+    const text = qs[Number(cb.dataset.i)].q;
+    if(cb.checked) list.delete(text); else list.add(text);
+    qOff[bLabel] = Array.from(list);
+    save('rc_qoff', qOff);
+    renderQChoices();
+  }));
+}
+document.getElementById('qAll').addEventListener('click', ()=>{
+  const bLabel = document.getElementById('pBank').value;
+  if(!bLabel) return;
+  qOff[bLabel] = [];
+  save('rc_qoff', qOff);
+  renderQChoices();
+});
+
 function chooseQuestionIndex(bLabel){
-  const questions = banks[bLabel];
+  const on = enabledIdx(bLabel);
   const c = getCycle();
-  let qAvailable = questions.map((_,i)=>i).filter(i=>!c.usedQuestions.includes(i));
-  if(!qAvailable.length){ c.usedQuestions = []; qAvailable = questions.map((_,i)=>i); }
+  let qAvailable = on.filter(i=>!c.usedQuestions.includes(i));
+  if(!qAvailable.length){ c.usedQuestions = []; qAvailable = on.slice(); }
   const qi = qAvailable[Math.floor(Math.random()*qAvailable.length)];
   c.usedQuestions.push(qi);
   save('rc_cycle', cycle);
@@ -1103,6 +1181,10 @@ document.getElementById('callBtn').addEventListener('click', ()=>{
   if(!rLabel || !bLabel) return;
   stopTimer();
   primeAudio();
+  if(!enabledIdx(bLabel).length){
+    document.getElementById('stage').innerHTML = '<p class="empty">No questions are checked for this topic. Open "Choose questions" and check at least one.</p>';
+    return;
+  }
   const pick = chooseStudent(rLabel);
   if(pick.none){
     document.getElementById('stage').innerHTML = noneMessage(pick.none);
@@ -1183,22 +1265,92 @@ function renderStage(rLabel, student, bLabel, question, note, secs){
     refreshAttendanceUI();
     scrollToStage();
   });
-  document.getElementById('markCorrect').addEventListener('click', ()=> recordPoint(rLabel, student, true));
-  document.getElementById('markWrong').addEventListener('click', ()=> recordPoint(rLabel, student, false));
+  document.getElementById('markCorrect').addEventListener('click', ()=> recordPoint(rLabel, student, true, bLabel, question));
+  document.getElementById('markWrong').addEventListener('click', ()=> recordPoint(rLabel, student, false, bLabel, question));
 }
 
-function recordPoint(rLabel, student, correct){
+function recordPoint(rLabel, student, correct, bLabel, question){
   if(!points[rLabel]) points[rLabel] = {};
   if(!points[rLabel][student]) points[rLabel][student] = {points:0, correct:0, called:0};
   const rec = points[rLabel][student];
   rec.called += 1;
   if(correct){ rec.correct += 1; rec.points += 1; }
   save('rc_points', points);
-  document.getElementById('scoreRow').innerHTML = `<span class="hint" style="margin:0;">${correct ? 'Nice — point added.' : 'Marked, no point this time.'}</span>`;
+  if(question){
+    attemptLog.push({ t: new Date().toISOString(), roster: rLabel, topic: bLabel, q: question.q, student: student, ok: correct ? 1 : 0 });
+    save('rc_log', attemptLog);
+  }
+  // A student who misses can go back on the list for another try (only matters when "Pick each student only once" is on).
+  let comeback = false;
+  if(!correct && pickOnce && retryMissed){
+    const sess = getSession(rLabel);
+    sess.misses = sess.misses || {};
+    sess.misses[student] = (sess.misses[student] || 0) + 1;
+    if(sess.misses[student] < 2){ sess.used = sess.used.filter(n=>n!==student); comeback = true; }
+    save('rc_session', session);
+    renderSessionInfo();
+  }
+  document.getElementById('scoreRow').innerHTML = `<span class="hint" style="margin:0;">${correct ? 'Nice — point added.' : (comeback ? 'Marked, no point this time. They stay on the list for another try.' : 'Marked, no point this time.')}</span>`;
+  renderQStats();
 }
 
 // ---------- SCOREBOARD ----------
+function csvCell(v){ return '"' + String(v).replace(/"/g, '""') + '"'; }
+function refreshQStatSelects(){
+  const rSel = document.getElementById('qsRoster'), tSel = document.getElementById('qsTopic');
+  const prevR = rSel.value, prevT = tSel.value;
+  const rLabels = Object.keys(rosters), tLabels = Object.keys(banks);
+  rSel.innerHTML = '<option value="">All rosters</option>' + rLabels.map(l=>`<option value="${escapeAttr(l)}">${escapeHtml(l)}</option>`).join('');
+  tSel.innerHTML = '<option value="">All topics</option>' + tLabels.map(l=>`<option value="${escapeAttr(l)}">${escapeHtml(l)}</option>`).join('');
+  if(rLabels.includes(prevR)) rSel.value = prevR;
+  if(tLabels.includes(prevT)) tSel.value = prevT;
+  renderQStats();
+}
+function renderQStats(){
+  const rF = document.getElementById('qsRoster').value;
+  const tF = document.getElementById('qsTopic').value;
+  const tbody = document.querySelector('#qStatsTable tbody');
+  const map = new Map();
+  if(tF && banks[tF]) banks[tF].forEach(q=>map.set(tF + '\u0001' + q.q, { topic: tF, q: q.q, asked: 0, right: 0 }));
+  attemptLog.forEach(e=>{
+    if(rF && e.roster !== rF) return;
+    if(tF && e.topic !== tF) return;
+    const k = e.topic + '\u0001' + e.q;
+    if(!map.has(k)) map.set(k, { topic: e.topic, q: e.q, asked: 0, right: 0 });
+    const r = map.get(k); r.asked += 1; r.right += e.ok ? 1 : 0;
+  });
+  const rows = Array.from(map.values());
+  rows.sort((a,b)=>{
+    if(!a.asked !== !b.asked) return a.asked ? -1 : 1;                 // unasked questions last
+    const pa = a.asked ? a.right / a.asked : 2, pb = b.asked ? b.right / b.asked : 2;
+    return (pa - pb) || (b.asked - a.asked);                           // lowest % right first
+  });
+  if(!rows.length){
+    tbody.innerHTML = '<tr><td colspan="5" class="dim">No answers recorded yet. Results appear here after you mark students "Got it right" or "Missed it."</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r=>{
+    const pct = r.asked ? Math.round(100 * r.right / r.asked) + '%' : '—';
+    const label = (tF ? '' : '<span class="dim">' + escapeHtml(r.topic) + ' &middot; </span>') + escapeHtml(r.q.length > 90 ? r.q.slice(0,90) + '…' : r.q);
+    return `<tr><td class="qtxt">${label}</td><td class="num">${r.asked}</td><td class="num">${r.right}</td><td class="num">${r.asked - r.right}</td><td class="num">${pct}</td></tr>`;
+  }).join('');
+}
+document.getElementById('qsRoster').addEventListener('change', renderQStats);
+document.getElementById('qsTopic').addEventListener('change', renderQStats);
+document.getElementById('exportLog').addEventListener('click', ()=>{
+  let csv = 'date_time,roster,topic,question,student,result\n';
+  attemptLog.forEach(e=>{
+    csv += [csvCell(e.t), csvCell(e.roster), csvCell(e.topic), csvCell(e.q), csvCell(e.student), e.ok ? 'right' : 'missed'].join(',') + '\n';
+  });
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'roll-call-attempt-log.csv';
+  a.click();
+});
+
 function refreshScoreSelects(){
+  refreshQStatSelects();
   const sSel = document.getElementById('sRoster');
   const rLabels = Object.keys(rosters);
   const prevVal = sSel.value;
