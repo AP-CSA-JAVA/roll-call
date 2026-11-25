@@ -11,8 +11,9 @@ browser's local storage on that computer. Nothing is uploaded to this repository
 
 This repository is public (GitHub Pages on a free plan requires that). It should contain **only** the app:
 
-- `index.html`
-- `README.md`
+- `index.html` — Roll Call
+- `teams.html` — Roll Call Teams: Race Day (team race mode)
+- `README.md`, `README-google-signin.md`
 
 **Do not commit question-bank CSV files, rosters, or exports here.** Anyone can read a public repository,
 including the answer keys. Keep those files on your own computer, in Google Drive, or in a separate
@@ -36,3 +37,15 @@ To make Git ignore them, add a file named `.gitignore` containing:
 8. On the **Scoreboard**, **Question results** counts how many times each question was asked, how many were right or missed, and the percent right. **Export attempt log** downloads every answer (date, roster, topic, question, student, right/missed) as a CSV. The attempt log is stored in the browser like everything else; Google Sync does not carry it yet, so export it if you want a backup.
 
 Question-bank CSV columns: `question, choiceA, choiceB, choiceC, choiceD, correct` (correct = A, B, C, or D).
+
+## Roll Call Teams: Race Day (`teams.html`)
+
+Team race version: 2-10 teams of 2-5 students; a right answer moves the team's car ahead, a wrong one
+moves it back. It reads the same question-bank CSVs as Roll Call. Published at
+`https://ap-csa-java.github.io/roll-call/teams.html`. Optional teacher sign-in: see `README-google-signin.md`.
+
+## Shared color theme
+
+Roll Call, Race Day and the Teacher Hub (`ap-csa-java.github.io/hub/`) share one theme choice, saved in
+the browser key `rc_theme`. Pick a theme in any of them and the others match on that computer.
+Race Day's custom colors stay on Race Day only.

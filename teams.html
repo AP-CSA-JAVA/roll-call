@@ -1,0 +1,1928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--
+  Roll Call: Race Day — standalone edition
+  Host this file yourself (GitHub Pages, school server, etc.) — do not upload it to
+  claude.ai. All race/roster/question data stays in the browser's local storage on
+  the device that loads this page; nothing is sent to Anthropic or any other server
+  except the optional Google Sign-In check described in README-google-signin.md.
+  Fill in GOOGLE_CLIENT_ID below (see the README) to enable teacher sign-in.
+-->
+<title>Roll Call: Race Day</title>
+<script>
+  // ---- Configuration -----------------------------------------------------
+  // Paste the OAuth Client ID from Google Cloud Console here (see
+  // README-google-signin.md). Leave blank to run without teacher sign-in.
+  window.ROLLCALL_CONFIG = {
+    GOOGLE_CLIENT_ID: "",           // e.g. "123456789-abc.apps.googleusercontent.com"
+    RESTRICT_HOSTED_DOMAIN: ""      // e.g. "lbschools.net" — leave blank to allow any Google account
+  };
+</script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Titan+One&family=Rubik:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  /* Theme variables — overridden at runtime by the Theme picker in Setup
+     (see THEME_PRESETS / applyTheme in the script). These are just the
+     defaults shown before any theme is chosen or loaded from storage. */
+  :root{
+    --bg:#20232B;
+    --panel:#2B2F3A;
+    --text:#FFF6E9;
+    --text-dim:#C9CCDA;
+    --sun:#FFC93C;
+    --sun-dark:#E0A800;
+    --go:#3DDC97;
+    --go-dark:#20A870;
+    --stop:#FF5A5F;
+    --stop-dark:#D63A3F;
+    --ink:#20232B;
+    --paper:#FFFFFF;
+    --lane-line:#454B5A;
+    --muted:#8A8FA3;
+    --card-radius: 18px;
+    --font-head:'Titan One', 'Rubik', sans-serif;
+    --font-body:'Rubik', system-ui, sans-serif;
+    --font-mono:'Space Mono', monospace;
+    color-scheme: dark;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--font-body);
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    background-image:
+      radial-gradient(circle at 10% 0%, rgba(255,201,60,0.07), transparent 45%),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 2px, transparent 2px 34px);
+  }
+  html{ scroll-padding-top:env(safe-area-inset-top,0px); }
+  h1,h2,h3{ font-family:var(--font-head); font-weight:400; letter-spacing:0.3px; margin:0; }
+  button{ font-family:var(--font-body); }
+  ::-webkit-scrollbar{ width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb{ background:#3c4152; border-radius:8px; }
+
+  .app{ max-width:1180px; margin:0 auto; padding:18px 18px 60px; }
+
+  /* ---- Topbar ---- */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:16px; flex-wrap:wrap;
+    padding:14px 4px 22px;
+  }
+  .brand{ display:flex; align-items:center; gap:12px; }
+  .brand-flag{ font-size:30px; line-height:1; transform:rotate(-8deg); }
+  .brand h1{ font-size:26px; color:var(--sun); }
+  .brand p{ margin:2px 0 0; color:var(--text-dim); font-size:13px; }
+  .tabs{ display:flex; gap:6px; background:var(--panel); padding:5px; border-radius:14px; }
+  .tab{
+    border:none; background:transparent; color:var(--text-dim);
+    padding:9px 16px; border-radius:10px; font-size:14px; font-weight:600;
+    cursor:pointer; transition:background .15s, color .15s;
+  }
+  .tab[aria-selected="true"]{ background:var(--sun); color:var(--ink); }
+  .tab:disabled{ opacity:.35; cursor:not-allowed; }
+
+  .account{ display:flex; align-items:center; gap:10px; }
+  .gear-btn{
+    width:36px; height:36px; border-radius:10px; border:1.5px solid #3c4152; background:var(--panel);
+    font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex:none;
+  }
+  .gear-btn:hover{ border-color:var(--sun); }
+
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:50;
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .modal{
+    background:var(--panel); border-radius:var(--card-radius); padding:22px; max-width:480px; width:100%;
+    border:1px solid rgba(255,255,255,0.08); max-height:85vh; overflow-y:auto;
+  }
+  .modal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+  .modal-head h2{ font-size:19px; color:var(--sun); }
+  .modal-close{ border:none; background:transparent; color:var(--text-dim); font-size:18px; cursor:pointer; padding:4px 8px; border-radius:8px; }
+  .modal-close:hover{ color:var(--text); background:rgba(255,255,255,0.06); }
+  .signed-in-chip{ display:flex; align-items:center; gap:8px; background:var(--panel); border-radius:100px; padding:5px 6px 5px 5px; }
+  .signed-in-initial{
+    width:26px; height:26px; border-radius:50%; background:var(--sun); color:var(--ink);
+    font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center; flex:none;
+  }
+  .signed-in-chip #signedInName{ font-size:13px; font-weight:600; color:var(--text); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #noAuthNote{ max-width:220px; text-align:right; }
+
+  /* ---- Theme picker ---- */
+  .theme-grid{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+  .theme-swatch{
+    width:92px; border-radius:12px; overflow:hidden; cursor:pointer; border:2.5px solid transparent;
+    background:#171A21; text-align:left;
+  }
+  .theme-swatch.active{ border-color:var(--sun); }
+  .theme-swatch .preview{ height:36px; display:flex; }
+  .theme-swatch .preview span{ flex:1; }
+  .theme-swatch .label{ font-size:11px; padding:6px 8px; color:var(--text-dim); }
+  .custom-theme-row{ display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+  .custom-theme-row label{ display:flex; align-items:center; gap:8px; margin-bottom:0; }
+  .custom-theme-row input[type=color]{ width:36px; height:36px; padding:0; border:none; border-radius:8px; background:none; cursor:pointer; }
+
+  /* ---- Roster manager (edit teams during/after a race) ---- */
+  .roster-manager-card{ background:#171A21; border-radius:14px; padding:14px; border:1.5px solid #3c4152; }
+  .roster-manager-card .head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .roster-manager-card .head .name{ font-weight:800; font-size:14.5px; }
+  .roster-manager-card .head .pos{ font-family:var(--font-mono); font-size:12px; color:var(--text-dim); }
+  .roster-student-row{ display:flex; align-items:center; gap:6px; padding:6px 0; border-bottom:1px solid #2a2e38; }
+  .roster-student-row:last-of-type{ border-bottom:none; }
+  .roster-student-row .student-name{ flex:1; min-width:0; font-size:13.5px; overflow-wrap:anywhere; }
+  .roster-student-row.np .student-name{ text-decoration:line-through; color:var(--text-dim); }
+  .roster-student-row .remove-student{ border:none; background:transparent; color:var(--stop); cursor:pointer; font-size:15px; padding:2px 6px; flex:none; }
+  .icon-btn{
+    flex:none; min-width:32px; height:28px; border-radius:8px; border:1.5px solid #3c4152; background:#0F1116;
+    color:var(--text); font-weight:800; font-size:12.5px; cursor:pointer; padding:0 7px; font-family:var(--font-body);
+  }
+  .icon-btn:hover{ border-color:var(--sun); color:var(--sun); }
+  .np-toggle.on{ background:var(--stop); border-color:var(--stop); color:#3A0B0D; }
+  .np-toggle.on:hover{ color:#3A0B0D; filter:brightness(1.08); }
+  .move-btn{ font-size:14px; }
+  .move-btn[aria-expanded="true"]{ border-color:var(--sun); color:var(--sun); }
+  .move-picker{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:4px 0 10px; font-size:12px; color:var(--text-dim); border-bottom:1px solid #2a2e38; }
+  .move-chip{
+    display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:100px;
+    border:1.5px solid #3c4152; background:#0F1116; color:var(--text); font-size:12px; font-weight:700; cursor:pointer; font-family:var(--font-body);
+  }
+  .move-chip:hover{ border-color:var(--sun); }
+  .move-chip .lane-chip{ margin-right:0; width:10px; height:10px; }
+  .add-student-row{ display:flex; gap:6px; margin-top:10px; }
+  .add-student-row input{ flex:1; }
+
+  .card{
+    background:var(--panel); border-radius:var(--card-radius);
+    padding:20px; margin-bottom:16px; border:1px solid rgba(255,255,255,0.06);
+  }
+  .card h2{ font-size:19px; color:var(--sun); margin-bottom:4px; }
+  .card .sub{ color:var(--text-dim); font-size:13px; margin:0 0 16px; }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:720px){ .grid2{ grid-template-columns:1fr; } }
+
+  label{ display:block; font-size:12.5px; font-weight:600; color:var(--text-dim); margin-bottom:6px; text-transform:none; }
+  input[type=text], input[type=number], textarea, select{
+    width:100%; background:#171A21; border:1.5px solid #3c4152; color:var(--text);
+    border-radius:10px; padding:10px 12px; font-family:var(--font-body); font-size:14.5px;
+    outline:none; transition:border-color .15s;
+  }
+  input[type=text]:focus, input[type=number]:focus, textarea:focus, select:focus{ border-color:var(--sun); }
+  textarea{ resize:vertical; min-height:78px; line-height:1.5; }
+
+  .stepper{ display:flex; align-items:center; gap:10px; }
+  .stepper input{ text-align:center; width:70px; font-size:18px; font-weight:700; }
+  .step-btn{
+    width:38px; height:38px; border-radius:10px; border:1.5px solid #3c4152; background:#171A21;
+    color:var(--sun); font-size:19px; font-weight:700; cursor:pointer;
+  }
+  .step-btn:hover{ border-color:var(--sun); }
+
+  .btn{
+    border:none; border-radius:12px; padding:12px 20px; font-weight:700; font-size:14.5px;
+    cursor:pointer; display:inline-flex; align-items:center; gap:8px; transition:transform .08s, filter .15s;
+  }
+  .btn:active{ transform:scale(0.97); }
+  .btn:disabled{ opacity:.4; cursor:not-allowed; }
+  .btn-primary{ background:var(--sun); color:var(--ink); }
+  .btn-primary:hover:not(:disabled){ filter:brightness(1.08); }
+  .btn-go{ background:var(--go); color:#0B2B20; }
+  .btn-go:hover:not(:disabled){ filter:brightness(1.08); }
+  .btn-stop{ background:var(--stop); color:#3A0B0D; }
+  .btn-stop:hover:not(:disabled){ filter:brightness(1.08); }
+  .btn-ghost{ background:transparent; color:var(--text); border:1.5px solid #3c4152; }
+  .btn-ghost:hover:not(:disabled){ border-color:var(--sun); color:var(--sun); }
+  .btn-sm{ padding:8px 14px; font-size:13px; border-radius:9px; }
+  .btn-wide{ width:100%; justify-content:center; padding:16px; font-size:16.5px; border-radius:14px; }
+
+  .pill{ display:inline-flex; align-items:center; gap:6px; padding:4px 11px; border-radius:100px; font-size:12px; font-weight:700; }
+  .pill-topic{ background:#3A3F52; color:var(--cream); }
+
+  .error-box{ background:rgba(255,90,95,0.12); border:1px solid var(--stop); color:#FFC4C6; border-radius:10px; padding:10px 14px; font-size:13.5px; margin-bottom:14px; }
+  .hint{ color:var(--text-dim); font-size:12.5px; margin-top:6px; }
+  .hint.warn{ color:#FFC93C; }
+  .hint.bad{ color:#FF8489; }
+
+  /* ---- Team setup cards ---- */
+  .team-setup-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(230px,1fr)); gap:14px; }
+  .team-setup-card{ background:#171A21; border-radius:14px; padding:14px; border:1.5px solid #3c4152; }
+  .team-setup-head{ display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .team-setup-head input[type=text]{ font-weight:700; flex:1; min-width:0; }
+  .team-setup-head select{ background:#0F1116; border:1.5px solid #3c4152; color:var(--text); border-radius:8px; padding:4px 6px; font-size:12px; flex:none; }
+
+  /* ---- CSV panel ---- */
+  .drop{
+    border:2px dashed #454B5A; border-radius:14px; padding:22px; text-align:center;
+    color:var(--text-dim); cursor:pointer; transition:border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.drag{ border-color:var(--sun); background:rgba(255,201,60,0.05); }
+  .drop strong{ color:var(--sun); }
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th,td{ text-align:left; padding:8px 10px; border-bottom:1px solid #3c4152; }
+  th{ color:var(--text-dim); font-size:11.5px; text-transform:uppercase; letter-spacing:.4px; }
+  .table-wrap{ overflow-x:auto; max-width:100%; border-radius:10px; }
+  .qcount{ font-family:var(--font-mono); color:var(--go); }
+
+  /* ---- Race track ---- */
+  .track-header{ display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+  .track-toggle{
+    display:inline-flex; align-items:center; gap:10px; background:none; border:none; padding:0; margin:0;
+    color:inherit; font:inherit; letter-spacing:inherit; cursor:pointer;
+  }
+  .track-toggle .chev{ display:inline-block; font-size:13px; transition:transform .2s; }
+  .track-toggle:hover{ filter:brightness(1.12); }
+  .track-toggle:focus-visible{ outline:2px solid var(--sun); outline-offset:4px; border-radius:6px; }
+  .track-card.collapsed{ padding:14px 20px; }
+  .track-card.collapsed .track-header{ margin-bottom:10px; }
+  .track-card.collapsed .chev{ transform:rotate(-90deg); }
+  .toggle-hint{ opacity:.75; }
+  .mini-standings{ display:flex; gap:8px; flex-wrap:wrap; }
+  .mini-team{
+    display:flex; align-items:center; gap:8px; background:#171A21; border:1.5px solid #2f3340;
+    border-radius:100px; padding:6px 12px; font-size:13px; font-weight:700;
+  }
+  .mini-team.active-turn{ border-color:var(--go); }
+  .mini-team.finished{ border-color:var(--sun); }
+  .mini-team .lane-chip{ margin-right:0; }
+  .mini-bar{ width:64px; height:6px; background:#2f3340; border-radius:6px; overflow:hidden; }
+  .mini-bar span{ display:block; height:100%; border-radius:6px; transition:width .5s; }
+  .mini-team .pos{ font-family:var(--font-mono); font-size:12px; color:var(--text-dim); }
+  .track-header .dist{ color:var(--text-dim); font-size:13px; }
+  .lanes{ display:flex; flex-direction:column; gap:10px; margin-bottom:18px; }
+  .lane{
+    position:relative; background:#171A21; border-radius:14px; padding:10px 14px;
+    display:grid; grid-template-columns:150px 1fr; gap:14px; align-items:center;
+    border:1.5px solid #2f3340; overflow:hidden;
+  }
+  .lane.finished{ border-color:var(--sun); box-shadow:0 0 0 1px var(--sun) inset; }
+  .lane.active-turn{ border-color:var(--go); }
+  .lane-info{ min-width:0; }
+  .lane-info .name{ font-weight:800; font-size:14.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .lane-info .pos{ font-family:var(--font-mono); color:var(--text-dim); font-size:12px; margin-top:2px; }
+  .lane-chip{ width:12px; height:12px; border-radius:4px; display:inline-block; margin-right:6px; vertical-align:middle; }
+  .lane-track{
+    position:relative; height:56px; border-radius:10px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 calc(9% - 1px), var(--lane-line) calc(9% - 1px) 9%),
+      #14161C;
+  }
+  .lane-track::before{
+    content:"🏁"; position:absolute; left:2px; top:50%; transform:translateY(-50%); font-size:20px; opacity:.8;
+  }
+  .lane-track::after{
+    content:"🏆"; position:absolute; right:2px; top:50%; transform:translateY(-50%); font-size:20px; opacity:.9;
+  }
+  .car-wrap{
+    position:absolute; top:50%; left:0; transform:translate(0,-50%);
+    transition:left .65s cubic-bezier(.34,1.4,.5,1);
+    width:64px; height:34px;
+  }
+  .car-wrap.bump{ animation:bump .5s ease; }
+  @keyframes bump{ 0%{transform:translate(0,-50%) scale(1);} 30%{transform:translate(0,-58%) scale(1.08) rotate(-3deg);} 100%{transform:translate(0,-50%) scale(1);} }
+  .car-wrap svg{ width:100%; height:100%; display:block; filter:drop-shadow(0 3px 3px rgba(0,0,0,.45)); }
+  .car-label{
+    position:absolute; top:-9px; left:50%; transform:translateX(-50%);
+    background:var(--panel); color:var(--text); font-size:10px; font-weight:700;
+    padding:1px 6px; border-radius:6px; white-space:nowrap;
+  }
+
+  /* ---- Control panel ---- */
+  .control{ text-align:center; }
+  .control-head{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:10px; margin-bottom:12px; }
+  .control-head h2{ grid-column:2; margin:0; }
+  .size-ctl{ grid-column:3; justify-self:end; display:inline-flex; align-items:center; gap:4px; }
+  .size-ctl .icon-btn{ height:32px; min-width:38px; font-size:13px; }
+  .size-ctl .scale-label{ font-family:var(--font-mono); font-size:11.5px; color:var(--text-dim); min-width:40px; text-align:center; }
+  @media (max-width:560px){
+    .control-head{ grid-template-columns:1fr; }
+    .control-head h2, .size-ctl{ grid-column:1; justify-self:center; }
+  }
+  .turn-strip{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-bottom:16px; }
+  .turn-chip{
+    padding:7px 13px; border-radius:100px; font-size:12.5px; font-weight:700; cursor:pointer;
+    border:1.5px solid #3c4152; background:#171A21; color:var(--text-dim); display:inline-flex; align-items:center; gap:6px;
+  }
+  .turn-chip.current{ border-color:var(--go); color:var(--go); }
+  .turn-chip.done{ opacity:.4; cursor:default; }
+  .call-box{ min-height:150px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+  .call-prompt{ color:var(--text-dim); font-size:14.5px; }
+  .question-card{ background:#171A21; border-radius:14px; padding:20px; width:100%; max-width:720px; border:1.5px solid #3c4152; transition:max-width .25s; }
+  .control.focus .question-card{ max-width:1040px; padding:26px 30px; }
+  .question-meta{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; flex-wrap:wrap; }
+  .question-student{ font-size:calc(15px * var(--qscale,1)); font-weight:700; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .control.focus .question-student{ font-size:calc(18px * var(--qscale,1)); }
+  .np-call{ border:1.5px solid var(--stop); background:transparent; color:var(--stop); font-weight:800; font-size:12.5px; border-radius:8px; padding:4px 10px; cursor:pointer; font-family:var(--font-body); }
+  .np-call:hover{ background:var(--stop); color:#3A0B0D; }
+  .question-student .team-tag{ color:var(--sun); }
+  .question-text{ font-size:calc(18px * var(--qscale,1)); line-height:1.45; margin:8px 0 4px; }
+  .control.focus .question-text{ font-size:calc(24px * var(--qscale,1)); }
+  .choices{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:16px 0 4px; text-align:left; }
+  @media (max-width:640px){ .choices{ grid-template-columns:1fr; } }
+  .choice{
+    display:flex; gap:12px; align-items:flex-start; background:#0F1116; border:1.5px solid #3c4152;
+    border-radius:12px; padding:12px 14px; font-size:calc(16px * var(--qscale,1)); line-height:1.4;
+    transition:opacity .2s, border-color .2s, background .2s;
+  }
+  .control.focus .choice{ font-size:calc(21px * var(--qscale,1)); padding:16px 18px; }
+  .choice .letter{
+    flex:none; width:1.75em; height:1.75em; border-radius:8px; background:var(--sun); color:var(--ink);
+    font-weight:800; display:flex; align-items:center; justify-content:center;
+  }
+  .choice .ctext{ white-space:pre-wrap; overflow-wrap:anywhere; padding-top:.1em; }
+  .question-card.revealed .choice.correct{ border-color:var(--go); background:rgba(61,220,151,.13); }
+  .question-card.revealed .choice.correct .letter{ background:var(--go); color:#0B2B20; }
+  .question-card.revealed .choice:not(.correct){ opacity:.5; }
+  .question-image{ display:block; max-width:100%; max-height:260px; object-fit:contain; border-radius:10px; margin:6px 0 10px; border:1.5px solid #3c4152; background:#0E1015; }
+  .answer-toggle{ margin-top:10px; }
+  .answer-toggle summary{ cursor:pointer; list-style:none; display:inline-flex; align-items:center; user-select:none; }
+  .answer-toggle summary::-webkit-details-marker{ display:none; }
+  .answer-toggle summary::before{ content:"🔑 "; }
+  .answer-toggle[open] summary{ margin-bottom:8px; }
+  .answer-reveal{ margin-top:2px; font-family:var(--font-mono); font-size:calc(13.5px * var(--qscale,1)); color:var(--go); }
+  .result-btns{ display:flex; gap:12px; margin-top:18px; justify-content:center; flex-wrap:wrap; }
+  .result-btns .btn{ min-width:170px; justify-content:center; font-size:16px; padding:14px 22px; }
+  .winner-banner{
+    background:linear-gradient(90deg, var(--sun), var(--go)); color:var(--ink); border-radius:14px;
+    padding:16px 20px; font-weight:800; font-size:16px; display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; flex-wrap:wrap;
+  }
+
+  /* ---- Results ---- */
+  .stat-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:6px; }
+  .stat{ background:#171A21; border-radius:12px; padding:14px; border:1.5px solid #3c4152; }
+  .stat .num{ font-family:var(--font-mono); font-size:24px; font-weight:700; color:var(--sun); }
+  .stat .lbl{ font-size:12px; color:var(--text-dim); margin-top:2px; }
+  .log-table th:nth-child(1){ width:80px; }
+  .badge-correct{ color:var(--go); font-weight:700; }
+  .badge-incorrect{ color:var(--stop); font-weight:700; }
+  .actions-row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; }
+
+  .empty{ text-align:center; padding:40px 20px; color:var(--text-dim); }
+  .empty .big{ font-size:38px; margin-bottom:8px; }
+
+  [hidden]{ display:none !important; }
+  .visually-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <div class="topbar">
+    <div class="brand">
+      <span class="brand-flag">🏁</span>
+      <div>
+        <h1>Roll Call: Race Day</h1>
+        <p>Answer right, gain ground. Answer wrong, lose ground.</p>
+      </div>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" id="tab-setup" role="tab" aria-selected="true">Setup</button>
+      <button class="tab" id="tab-race" role="tab" aria-selected="false" disabled>Race</button>
+      <button class="tab" id="tab-results" role="tab" aria-selected="false" disabled>Results</button>
+    </div>
+    <div class="account" id="accountBox">
+      <button class="gear-btn" id="settingsGearBtn" type="button" title="Table theme" aria-label="Table theme settings">⚙️</button>
+      <div id="gSignInBtn"></div>
+      <div id="signedInChip" class="signed-in-chip" hidden>
+        <span id="signedInInitial" class="signed-in-initial"></span>
+        <span id="signedInName"></span>
+        <button class="btn btn-ghost btn-sm" id="signOutBtn" type="button">Sign out</button>
+      </div>
+      <div id="noAuthNote" class="hint" hidden>Teacher sign-in isn't configured — see README-google-signin.md. Running in local-only mode.</div>
+    </div>
+  </div>
+
+  <!-- ============ THEME SETTINGS MODAL ============ -->
+  <div class="modal-backdrop" id="themeModalBackdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="themeModalTitle">
+      <div class="modal-head">
+        <h2 id="themeModalTitle">Table theme</h2>
+        <button class="modal-close" id="closeThemeModal" type="button" aria-label="Close">✕</button>
+      </div>
+      <p class="sub">Pick a background and accent color, or set your own.</p>
+      <div class="theme-grid" id="themeGrid"></div>
+      <div class="custom-theme-row">
+        <label>Custom background <input type="color" id="customBg" value="#20232B"></label>
+        <label>Custom accent <input type="color" id="customAccent" value="#FFC93C"></label>
+        <button class="btn btn-ghost btn-sm" id="applyCustomTheme" type="button">Use custom colors</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SETUP VIEW ============ -->
+  <section id="view-setup">
+
+    <div id="inRaceNotice" class="card" hidden style="border-color:var(--sun);">
+      <h2>Race in progress</h2>
+      <p class="sub" style="margin-bottom:0;">Team count, race distance, and the question bank are locked until you start a new race — but you can still move students between teams below (handy if two students shouldn't be paired up, or someone joins/leaves).</p>
+    </div>
+
+    <div id="preRaceOnly">
+      <div class="card">
+        <h2>Race settings</h2>
+        <p class="sub">2–10 teams, 2–5 students each. Set the finish line distance.</p>
+        <div class="grid2">
+          <div>
+            <label for="numTeams">Number of teams</label>
+            <div class="stepper">
+              <button class="step-btn" data-step="teams" data-dir="-1" type="button">−</button>
+              <input type="number" id="numTeams" min="2" max="10" value="4">
+              <button class="step-btn" data-step="teams" data-dir="1" type="button">+</button>
+            </div>
+          </div>
+          <div>
+            <label for="raceDistance">Race distance (steps to the finish)</label>
+            <div class="stepper">
+              <button class="step-btn" data-step="dist" data-dir="-1" type="button">−</button>
+              <input type="number" id="raceDistance" min="5" max="20" value="10">
+              <button class="step-btn" data-step="dist" data-dir="1" type="button">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Teams &amp; rosters</h2>
+      <p class="sub" id="rostersSub">Upload a roster CSV to fill in every team at once, or add students one at a time below (2–5 per team). Use Δ to move a student to another team and NP to mark them not present.</p>
+      <div id="preRaceRosterTools">
+        <div class="drop" id="rosterDropZone">
+          <div><strong>Click to choose a roster CSV</strong> or drag one here</div>
+          <div class="hint">Two columns: <code>team</code>, <code>student</code> — one row per student. A sample-roster.csv is included with this app for testing.</div>
+        </div>
+        <input type="file" id="rosterCsvInput" accept=".csv,text/csv" class="visually-hidden">
+        <div class="actions-row" style="margin-bottom:16px;">
+          <button class="btn btn-ghost btn-sm" id="downloadRosterTemplate" type="button">Download roster CSV template</button>
+        </div>
+      </div>
+      <div id="teamSetupGrid" class="team-setup-grid"></div>
+      <div id="rosterManagerGrid" class="team-setup-grid" hidden></div>
+    </div>
+
+    <div id="preRaceOnly2">
+      <div class="card">
+        <h2>Question bank</h2>
+        <p class="sub">Upload a CSV with a <code>question</code> column, plus optional <code>choiceA</code>–<code>choiceD</code>, <code>correct</code>, <code>topic</code>, and <code>image</code> columns. Your Roll Call question banks work as-is.</p>
+        <div class="drop" id="dropZone">
+          <div><strong>Click to choose a CSV</strong> or drag one here</div>
+          <div class="hint">Columns recognized: question / prompt · choiceA–choiceD · correct / answer / key · topic / standard / unit · image / picture (a web image URL, or a filename you upload below)</div>
+        </div>
+        <input type="file" id="csvInput" accept=".csv,text/csv" class="visually-hidden">
+        <div id="csvSummary" style="margin-top:14px;"></div>
+        <div class="actions-row">
+          <button class="btn btn-ghost btn-sm" id="downloadTemplate" type="button">Download CSV template</button>
+          <button class="btn btn-ghost btn-sm" id="clearCsv" type="button" hidden>Clear question bank</button>
+        </div>
+        <div style="margin-top:16px;">
+          <label for="imageInput">Question images (optional)</label>
+          <div class="hint" style="margin-bottom:8px;">Upload the image files referenced by filename in your CSV's <code>image</code> column. Skip this if your <code>image</code> column already holds full web links.</div>
+          <input type="file" id="imageInput" accept="image/*" multiple>
+          <div id="imageSummary" style="margin-top:8px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="setupErrors"></div>
+
+    <button class="btn btn-go btn-wide" id="startRaceBtn" type="button">🏁 Start the race</button>
+    <button class="btn btn-primary btn-wide" id="backToRaceBtn" type="button" hidden>🏎️ Back to the race</button>
+  </section>
+
+
+  <!-- ============ RACE VIEW ============ -->
+  <section id="view-race" hidden>
+    <div id="winnerBanner"></div>
+
+    <div class="card track-card" id="trackCard">
+      <div class="track-header">
+        <h2><button class="track-toggle" id="trackToggle" type="button" aria-expanded="true" aria-controls="lanes" title="Click to shrink or expand the track"><span class="chev" aria-hidden="true">▾</span>On the track</button></h2>
+        <div class="dist">First to <span id="raceDistLabel"></span> wins <span class="toggle-hint" id="trackToggleHint">· click the title to shrink</span></div>
+      </div>
+      <div class="lanes" id="lanes"></div>
+      <div class="mini-standings" id="miniStandings" hidden></div>
+    </div>
+
+    <div class="card control" id="controlCard">
+      <div class="control-head">
+        <h2>Control panel</h2>
+        <div class="size-ctl" role="group" aria-label="Question text size">
+          <button class="icon-btn" id="textSmaller" type="button" title="Smaller question text" aria-label="Smaller question text">A−</button>
+          <span class="scale-label" id="textScaleLabel">100%</span>
+          <button class="icon-btn" id="textBigger" type="button" title="Larger question text" aria-label="Larger question text">A+</button>
+        </div>
+      </div>
+      <div class="turn-strip" id="turnStrip"></div>
+      <div class="call-box" id="callBox"></div>
+    </div>
+
+    <div class="actions-row" style="justify-content:center;">
+      <button class="btn btn-ghost" id="endRaceBtn" type="button">End race &amp; see results</button>
+    </div>
+  </section>
+
+  <!-- ============ RESULTS VIEW ============ -->
+  <section id="view-results" hidden>
+    <div class="card">
+      <h2>Final standings</h2>
+      <div class="stat-grid" id="standingsGrid"></div>
+    </div>
+
+    <div class="card">
+      <h2>Accuracy by topic</h2>
+      <p class="sub">How well the class did on each question-content area.</p>
+      <div class="table-wrap"><table id="topicTable"><thead><tr><th>Topic</th><th>Attempts</th><th>Correct</th><th>Accuracy</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="card">
+      <h2>Accuracy by student</h2>
+      <div class="table-wrap"><table id="studentTable"><thead><tr><th>Student</th><th>Team</th><th>Attempts</th><th>Correct</th><th>Accuracy</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="card">
+      <h2>Full response log</h2>
+      <div class="table-wrap"><table class="log-table" id="logTable"><thead><tr><th>#</th><th>Team</th><th>Student</th><th>Question</th><th>Topic</th><th>Result</th><th>Position</th></tr></thead><tbody></tbody></table></div>
+      <div class="actions-row">
+        <button class="btn btn-primary btn-sm" id="downloadLogBtn" type="button">Download full log (CSV)</button>
+        <button class="btn btn-ghost btn-sm" id="downloadSummaryBtn" type="button">Download summary (CSV)</button>
+      </div>
+    </div>
+
+    <div class="actions-row" style="justify-content:center;">
+      <button class="btn btn-stop" id="newRaceBtn" type="button">Start a brand-new race</button>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- palette & car ---------------- */
+  var PALETTE = ["#E63946","#457B9D","#F4A300","#2A9D8F","#9B5DE5","#F15BB5","#00BBF9","#06D6A0","#EF476F","#F77F00"];
+  var PALETTE_NAMES = ["Red","Blue","Amber","Teal","Purple","Pink","Sky","Green","Rose","Orange"];
+
+  function carSVG(color){
+    return '<svg viewBox="0 0 120 60" xmlns="http://www.w3.org/2000/svg">'
+      + '<path d="M8,46 L14,26 Q19,14 36,14 L68,14 Q84,14 90,25 L112,31 Q117,33 117,40 L117,46 Q117,49 114,49 L11,49 Q8,49 8,46 Z" fill="'+color+'" stroke="#20232B" stroke-width="3.5" stroke-linejoin="round"/>'
+      + '<path d="M40,17 L66,17 Q78,17 83,26 L86,30 L38,30 Z" fill="#BFE9FF" stroke="#20232B" stroke-width="2.5" stroke-linejoin="round"/>'
+      + '<circle cx="32" cy="48" r="10" fill="#20232B" stroke="#F4F1EA" stroke-width="2.5"/>'
+      + '<circle cx="32" cy="48" r="3.2" fill="#8A8FA3"/>'
+      + '<circle cx="96" cy="48" r="10" fill="#20232B" stroke="#F4F1EA" stroke-width="2.5"/>'
+      + '<circle cx="96" cy="48" r="3.2" fill="#8A8FA3"/>'
+      + '<circle cx="106" cy="35" r="3" fill="#FFF6E9"/>'
+      + '</svg>';
+  }
+
+  /* ---------------- state ---------------- */
+  // Data is namespaced per signed-in teacher (by email) so several teachers
+  // sharing one cart laptop don't overwrite each other's race setups. With no
+  // sign-in configured (or before signing in) everything lives under "guest".
+  var currentNamespace = "guest";
+  function storageKey(){ return "rollcall_race_v2::" + currentNamespace; }
+
+  var state = null;
+
+  function defaultState(){
+    return {
+      phase: "setup",           // setup | race | results
+      distance: 10,
+      teams: [],                // {id,name,color,students:[names],position,queue:[idx..],queuePtr,finished}
+      questions: [],            // {id,text,topic,answer,image}
+      qQueue: [],
+      qPtr: 0,
+      turnOrder: [],            // array of team ids, rotation order
+      turnPtr: 0,
+      current: null,            // {teamId, student, question, revealed}
+      log: [],                  // {n,time,teamName,student,question,topic,result,position}
+      winners: [],              // team ids that have finished, in order
+      theme: { preset: "forest", customBg: null, customAccent: null },
+      started: false            // true once a race has been started (locks team count/distance/questions)
+    };
+  }
+
+  function save(){
+    try{ localStorage.setItem(storageKey(), JSON.stringify(state)); }catch(e){}
+  }
+  function load(){
+    try{
+      var raw = localStorage.getItem(storageKey());
+      if(raw) return JSON.parse(raw);
+    }catch(e){}
+    return null;
+  }
+
+  state = load() || defaultState();
+  if(!state.theme) state.theme = { preset: "forest", customBg: null, customAccent: null };
+  if(state.started === undefined) state.started = state.teams && state.teams.length > 0;
+
+  /* ---------------- helpers ---------------- */
+  function $(sel){ return document.querySelector(sel); }
+  function $all(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+  function el(tag, attrs, children){
+    var e = document.createElement(tag);
+    attrs = attrs || {};
+    for(var k in attrs){
+      if(attrs[k] === null || attrs[k] === undefined) continue;
+      if(k === "class") e.className = attrs[k];
+      else if(k === "html") e.innerHTML = attrs[k];
+      else if(k.indexOf("on") === 0) e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    }
+    (children||[]).forEach(function(c){ if(c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function uid(){ return Math.random().toString(36).slice(2,10); }
+  function shuffle(arr){
+    var a = arr.slice();
+    for(var i=a.length-1;i>0;i--){
+      var j = Math.floor(Math.random()*(i+1));
+      var t=a[i]; a[i]=a[j]; a[j]=t;
+    }
+    return a;
+  }
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  }
+  function csvEscape(s){
+    s = String(s == null ? "" : s);
+    if(/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+    return s;
+  }
+
+  /* ---------------- theme ---------------- */
+  // Same six themes as Roll Call (index.html). The choice is shared through the
+  // browser key "rc_theme", so Roll Call, Race Day and the hub always match.
+  // "ink" is the text color on accent-colored buttons.
+  var THEME_PRESETS = [
+    { id:"forest",   label:"Forest Green",      bg:"#16241c", panel:"#1f3d2e", text:"#f2efe3", textDim:"#b9c4ba", sun:"#e8b923", ink:"#1a1206" },
+    { id:"midnight", label:"Midnight Blue",     bg:"#0f1a2b", panel:"#172a45", text:"#eef2f8", textDim:"#aab7cb", sun:"#6cc4ff", ink:"#06202f" },
+    { id:"charcoal", label:"Charcoal & Orange", bg:"#1a1a1c", panel:"#28282b", text:"#f1efea", textDim:"#b5b3ad", sun:"#ff8f3f", ink:"#1f1004" },
+    { id:"plum",     label:"Deep Plum",         bg:"#1d1426", panel:"#2e2040", text:"#f4eef8", textDim:"#c3b6d0", sun:"#f3c969", ink:"#231803" },
+    { id:"teal",     label:"Ocean Teal",        bg:"#0e2426", panel:"#15393c", text:"#eef7f5", textDim:"#a9c4c1", sun:"#ff9e7a", ink:"#2a1005" },
+    { id:"paper",    label:"Classroom Light",   bg:"#f3efe4", panel:"#ffffff", text:"#1d2a23", textDim:"#56635b", sun:"#1f6b47", ink:"#ffffff" }
+  ];
+  var SHARED_THEME_KEY = "rc_theme";
+  function sharedThemeId(){
+    try{ var v = JSON.parse(localStorage.getItem(SHARED_THEME_KEY) || "null"); return themeById(v) ? v : null; }catch(e){ return null; }
+  }
+  function saveSharedTheme(id){ try{ localStorage.setItem(SHARED_THEME_KEY, JSON.stringify(id)); }catch(e){} }
+  // The shared theme wins over this page's own saved one, unless custom colors are in use here.
+  function syncSharedTheme(){
+    if(state.theme && state.theme.preset === "custom") return;
+    var id = sharedThemeId() || (themeById(state.theme && state.theme.preset) ? state.theme.preset : "forest");
+    state.theme = { preset:id, customBg:null, customAccent:null };
+  }
+
+  function themeById(id){
+    return THEME_PRESETS.filter(function(t){return t.id===id;})[0];
+  }
+
+  function applyTheme(theme){
+    var root = document.documentElement.style;
+    var t = theme.preset === "custom"
+      ? { bg: theme.customBg || "#20232B", panel: shade(theme.customBg,1.15), text: contrastText(theme.customBg), textDim: contrastText(theme.customBg, true), sun: theme.customAccent || "#FFC93C" }
+      : (themeById(theme.preset) || THEME_PRESETS[0]);
+    root.setProperty("--bg", t.bg);
+    root.setProperty("--panel", t.panel);
+    root.setProperty("--text", t.text);
+    root.setProperty("--text-dim", t.textDim);
+    root.setProperty("--sun", t.sun);
+    root.setProperty("--ink", t.ink || contrastText(t.sun));
+    document.documentElement.style.colorScheme = (t.id === "paper") ? "light" : "dark";
+  }
+
+  // Lighten/darken a hex color a bit, for deriving a panel color from a custom background.
+  function shade(hex, factor){
+    hex = (hex || "#20232B").replace("#","");
+    var num = parseInt(hex,16);
+    var r = Math.min(255, Math.round(((num>>16)&255) * factor));
+    var g = Math.min(255, Math.round(((num>>8)&255) * factor));
+    var b = Math.min(255, Math.round((num&255) * factor));
+    return "#" + [r,g,b].map(function(v){ return v.toString(16).padStart(2,"0"); }).join("");
+  }
+  // Pick readable text color (near-white or near-black) for a given background hex.
+  function contrastText(hex, dim){
+    hex = (hex || "#20232B").replace("#","");
+    var num = parseInt(hex,16);
+    var r=(num>>16)&255, g=(num>>8)&255, b=num&255;
+    var luminance = (0.299*r + 0.587*g + 0.114*b) / 255;
+    if(luminance > 0.6) return dim ? "#4A4E5A" : "#20232B";
+    return dim ? "#C9CCDA" : "#FFF6E9";
+  }
+
+  function renderThemePicker(){
+    var grid = $("#themeGrid");
+    grid.innerHTML = "";
+    THEME_PRESETS.forEach(function(t){
+      var active = state.theme.preset === t.id;
+      var swatch = el("div", {
+        class:"theme-swatch" + (active ? " active" : ""),
+        onclick: function(){ state.theme = { preset: t.id, customBg:null, customAccent:null }; saveSharedTheme(t.id); applyTheme(state.theme); save(); renderThemePicker(); }
+      }, [
+        el("div",{class:"preview"},[
+          el("span",{style:"background:"+t.bg}),
+          el("span",{style:"background:"+t.sun})
+        ]),
+        el("div",{class:"label"},[t.label])
+      ]);
+      grid.appendChild(swatch);
+    });
+    if(state.theme.preset === "custom"){
+      $("#customBg").value = state.theme.customBg || "#20232B";
+      $("#customAccent").value = state.theme.customAccent || "#FFC93C";
+    }
+  }
+
+  /* ---------------- CSV parsing ---------------- */
+  function parseCSV(text){
+    var rows = [];
+    var row = [];
+    var field = "";
+    var inQuotes = false;
+    for(var i=0;i<text.length;i++){
+      var c = text[i];
+      if(inQuotes){
+        if(c === '"'){
+          if(text[i+1] === '"'){ field += '"'; i++; }
+          else inQuotes = false;
+        } else field += c;
+      } else {
+        if(c === '"') inQuotes = true;
+        else if(c === ','){ row.push(field); field = ""; }
+        else if(c === '\n'){ row.push(field); rows.push(row); row=[]; field=""; }
+        else if(c === '\r'){ /* skip */ }
+        else field += c;
+      }
+    }
+    if(field.length || row.length){ row.push(field); rows.push(row); }
+    return rows.filter(function(r){ return r.some(function(f){ return f.trim() !== ""; }); });
+  }
+
+  function questionsFromCSV(text){
+    var rows = parseCSV(text);
+    if(!rows.length) return [];
+    var header = rows[0].map(function(h){ return h.trim().toLowerCase(); });
+    var qIdx = header.findIndex(function(h){ return ["question","prompt","text","questions"].indexOf(h) > -1; });
+    var tIdx = header.findIndex(function(h){ return ["topic","standard","unit","alignment","standard alignment","content alignment"].indexOf(h) > -1; });
+    var aIdx = header.findIndex(function(h){ return ["answer","correct","key","correct answer","expected answer","expected output","solution","sample answer","model answer","answer key"].indexOf(h) > -1; });
+    var iIdx = header.findIndex(function(h){ return ["image","picture","img","image url","photo"].indexOf(h) > -1; });
+    // Multiple-choice columns (Roll Call format: choiceA, choiceB, choiceC, choiceD)
+    var choiceIdx = ["a","b","c","d"].map(function(L){
+      return header.findIndex(function(h){
+        return ["choice"+L, "choice "+L, "option"+L, "option "+L, "answer "+L, "choice_"+L, "option_"+L].indexOf(h) > -1;
+      });
+    });
+    var dataRows = rows;
+    var startAt = 0;
+    if(qIdx > -1){ startAt = 1; } else { qIdx = 0; startAt = 0; } // no recognizable header -> treat col 0 as question, no header row skip
+    var out = [];
+    for(var i=startAt;i<dataRows.length;i++){
+      var r = dataRows[i];
+      var qText = (r[qIdx]||"").trim();
+      if(!qText) continue;
+      out.push({
+        id: uid(),
+        text: qText,
+        topic: tIdx>-1 ? (r[tIdx]||"").trim() : "",
+        answer: aIdx>-1 ? (r[aIdx]||"").trim() : "",
+        image: iIdx>-1 ? (r[iIdx]||"").trim() : "",
+        choices: choiceIdx.map(function(ci, n){
+          var t = ci>-1 ? (r[ci]||"").trim() : "";
+          return t ? { letter: "ABCD"[n], text: t } : null;
+        }).filter(Boolean)
+      });
+    }
+    return out;
+  }
+
+  var TEMPLATE_CSV = "question,choiceA,choiceB,choiceC,choiceD,correct,topic,image\n"
+    + "What is printed by System.out.println(3 + 4)?,34,7,3 + 4,An error,B,Java Basics: Output and Types,\n"
+    + "What keyword creates a subclass in Java?,implements,super,extends,this,C,Inheritance,\n"
+    + "An array's index always starts at what number?,0,1,-1,It depends on the array,A,Arrays,\n"
+    + "Which diagram element shows inheritance between two classes?,A dashed line,A diamond,A plain line,An arrow with a hollow triangle,D,UML,uml-inheritance.png\n"
+    + "Name one benefit of using a method instead of repeating code.,,,,,Open response,Methods and Abstraction,\n";
+
+  var TEMPLATE_ROSTER_CSV = "team,student\n"
+    + "Team 1,Ava Thompson\nTeam 1,Marcus Lee\nTeam 1,Priya Nair\n"
+    + "Team 2,Diego Ramirez\nTeam 2,Sofia Chen\nTeam 2,Liam O'Brien\n"
+    + "Team 3,Grace Kim\nTeam 3,Noah Patel\nTeam 3,Isabella Rossi\n"
+    + "Team 4,Ethan Wright\nTeam 4,Maya Johnson\nTeam 4,Oliver Garcia\n";
+
+  function rosterFromCSV(text){
+    var rows = parseCSV(text);
+    if(!rows.length) return [];
+    var header = rows[0].map(function(h){ return h.trim().toLowerCase(); });
+    var teamIdx = header.findIndex(function(h){ return ["team","team name","group"].indexOf(h) > -1; });
+    var studentIdx = header.findIndex(function(h){ return ["student","name","student name"].indexOf(h) > -1; });
+    var startAt = 0;
+    if(teamIdx > -1 && studentIdx > -1){ startAt = 1; } else { teamIdx = 0; studentIdx = 1; startAt = 0; }
+    var order = [];
+    var byTeam = {};
+    for(var i=startAt;i<rows.length;i++){
+      var r = rows[i];
+      var team = (r[teamIdx]||"").trim();
+      var student = (r[studentIdx]||"").trim();
+      if(!team || !student) continue;
+      if(!byTeam[team]){ byTeam[team] = []; order.push(team); }
+      byTeam[team].push(student);
+    }
+    return order.map(function(team){ return { name: team, students: byTeam[team] }; });
+  }
+
+  /* ---------------- images ---------------- */
+  var imageMap = {}; // lowercase filename -> data URL
+
+  function resolveQuestionImage(value){
+    if(!value) return null;
+    if(/^https?:\/\//i.test(value)) return value;
+    var key = value.trim().toLowerCase();
+    return imageMap[key] || null;
+  }
+
+  function handleImageFiles(files){
+    var remaining = files.length;
+    Array.prototype.forEach.call(files, function(file){
+      var reader = new FileReader();
+      reader.onload = function(){
+        imageMap[file.name.toLowerCase()] = String(reader.result);
+        remaining--;
+        if(remaining === 0){ renderImageSummary(); if(state.current) render(); }
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function renderImageSummary(){
+    var wrap = $("#imageSummary");
+    if(!wrap) return;
+    var count = Object.keys(imageMap).length;
+    wrap.innerHTML = count
+      ? '<span class="hint">' + count + " image" + (count===1?"":"s") + " uploaded and ready to match by filename</span>"
+      : "";
+  }
+
+  /* ---------------- setup view ---------------- */
+  var teamDraft = []; // {name, color, students: []}
+
+  function ensureTeamDraft(n){
+    while(teamDraft.length < n){
+      var idx = teamDraft.length;
+      teamDraft.push({ name: "Team " + (idx+1), color: PALETTE[idx % PALETTE.length], students: [], absent: [] });
+    }
+    teamDraft.length = n;
+  }
+
+  /* ---------------- roster manager (move/add/remove students during a race) ---------------- */
+  // Students are tracked by NAME (not list position) so moving/removing a
+  // student can never make the picker call someone from the wrong team.
+  var openMove = null; // which student's Δ move picker is open: "<teamKey>|<name>"
+
+  function absentList(team){ if(!team.absent) team.absent = []; return team.absent; }
+  function isAbsent(team, name){ return absentList(team).indexOf(name) > -1; }
+  function presentStudents(team){ return team.students.filter(function(n){ return !isAbsent(team, n); }); }
+
+  function resetTeamQueue(team){
+    team.nameQueue = [];
+  }
+
+  // If the student currently being asked is no longer on that team or is now
+  // marked NP, swap in a present teammate but keep the same question.
+  function syncCurrentPick(){
+    if(!state.current) return;
+    var team = teamById(state.current.teamId);
+    if(!team) { state.current = null; return; }
+    var name = state.current.student;
+    if(team.students.indexOf(name) > -1 && !isAbsent(team, name)) return;
+    var replacement = pickStudent(team);
+    if(replacement){
+      state.current.student = replacement;
+    } else {
+      state.current = null;
+      alert(team.name + " has no students marked present, so the current question was put back.");
+    }
+  }
+
+  function moveStudent(fromTeamId, studentName, toTeamId){
+    if(fromTeamId === toTeamId) return;
+    var from = teamById(fromTeamId), to = teamById(toTeamId);
+    if(!from || !to) return;
+    var idx = from.students.indexOf(studentName);
+    if(idx === -1) return;
+    if(from.students.length <= 2){
+      alert(from.name + " only has " + from.students.length + " students — a team needs at least 2. Add someone before moving this student out.");
+      return;
+    }
+    if(to.students.length >= 5){
+      alert(to.name + " already has 5 students, the max per team.");
+      return;
+    }
+    var wasAbsent = isAbsent(from, studentName);
+    from.students.splice(idx, 1);
+    if(wasAbsent) from.absent.splice(from.absent.indexOf(studentName), 1);
+    to.students.push(studentName);
+    if(wasAbsent) absentList(to).push(studentName);
+    resetTeamQueue(from);
+    resetTeamQueue(to);
+    openMove = null;
+    syncCurrentPick();
+    save();
+    render();
+  }
+
+  function removeStudent(teamId, studentName){
+    var team = teamById(teamId);
+    if(!team) return;
+    if(team.students.length <= 2){
+      alert(team.name + " needs at least 2 students — move or add someone before removing this one.");
+      return;
+    }
+    var idx = team.students.indexOf(studentName);
+    if(idx === -1) return;
+    team.students.splice(idx, 1);
+    var ai = absentList(team).indexOf(studentName);
+    if(ai > -1) team.absent.splice(ai, 1);
+    resetTeamQueue(team);
+    syncCurrentPick();
+    save();
+    render();
+  }
+
+  function addStudent(teamId, name){
+    var team = teamById(teamId);
+    if(!team || !name) return;
+    if(team.students.length >= 5){
+      alert(team.name + " already has 5 students, the max per team.");
+      return;
+    }
+    if(team.students.indexOf(name) > -1){
+      alert(name + " is already on " + team.name + ".");
+      return;
+    }
+    team.students.push(name);
+    resetTeamQueue(team);
+    save();
+    render();
+  }
+
+  function toggleAbsent(teamId, studentName){
+    var team = teamById(teamId);
+    if(!team) return;
+    var list = absentList(team);
+    var i = list.indexOf(studentName);
+    if(i > -1) list.splice(i, 1); else list.push(studentName);
+    syncCurrentPick();
+    save();
+    render();
+  }
+
+  // One student row: name (full width) · NP toggle · Δ move · ✕ remove.
+  // Shared by the race-time roster manager and the pre-race setup cards.
+  function studentRow(opts){
+    var key = opts.teamKey + "|" + opts.name;
+    var isOpen = openMove === key;
+    var row = el("div",{class:"roster-student-row" + (opts.absent ? " np" : "")},[
+      el("span",{class:"student-name"},[opts.name]),
+      el("button",{
+        class:"icon-btn np-toggle" + (opts.absent ? " on" : ""), type:"button",
+        title: opts.absent ? "Marked not present — click to mark present" : "Mark not present",
+        "aria-pressed": opts.absent ? "true" : "false",
+        onclick: opts.onToggleAbsent
+      },["NP"]),
+      el("button",{
+        class:"icon-btn move-btn", type:"button", title:"Move to another team",
+        "aria-label":"Move " + opts.name + " to another team", "aria-expanded": isOpen ? "true" : "false",
+        onclick:function(){ openMove = isOpen ? null : key; opts.rerender(); }
+      },["Δ"]),
+      el("button",{class:"remove-student", type:"button", title:"Remove from team", onclick: opts.onRemove},["✕"])
+    ]);
+    if(!isOpen) return [row];
+    var picker = el("div",{class:"move-picker"},["Move to:"]);
+    opts.destinations.forEach(function(d){
+      picker.appendChild(el("button",{class:"move-chip", type:"button", onclick:function(){ d.go(); }},[
+        el("span",{class:"lane-chip", style:"background:"+d.color}), d.name
+      ]));
+    });
+    picker.appendChild(el("button",{class:"move-chip", type:"button", onclick:function(){ openMove = null; opts.rerender(); }},["Cancel"]));
+    return [row, picker];
+  }
+
+  function renderRosterManager(){
+    var grid = $("#rosterManagerGrid");
+    grid.innerHTML = "";
+    state.teams.forEach(function(team){
+      var rows = [];
+      team.students.forEach(function(studentName){
+        rows = rows.concat(studentRow({
+          teamKey: team.id,
+          name: studentName,
+          absent: isAbsent(team, studentName),
+          onToggleAbsent: function(){ toggleAbsent(team.id, studentName); },
+          onRemove: function(){ removeStudent(team.id, studentName); },
+          rerender: renderRosterManager,
+          destinations: state.teams.filter(function(t){return t.id !== team.id;}).map(function(t){
+            return { name:t.name, color:t.color, go:function(){ moveStudent(team.id, studentName, t.id); } };
+          })
+        }));
+      });
+
+      var addInput = el("input",{type:"text", placeholder:"Add student…"});
+      var doAdd = function(){ var name = addInput.value.trim(); if(name){ addStudent(team.id, name); } };
+      addInput.addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); doAdd(); } });
+      var addRow = el("div",{class:"add-student-row"},[
+        addInput,
+        el("button",{class:"btn btn-ghost btn-sm", type:"button", onclick:doAdd},["Add"])
+      ]);
+
+      var npCount = absentList(team).length;
+      var card = el("div",{class:"roster-manager-card"},[
+        el("div",{class:"head"},[
+          el("div",{class:"name"},[el("span",{class:"lane-chip", style:"background:"+team.color}), team.name]),
+          el("div",{class:"pos"},[team.position + " / " + state.distance + (team.finished ? " 🏆" : "") + (npCount ? " · " + npCount + " NP" : "")])
+        ]),
+        el("div",{},rows),
+        addRow
+      ]);
+      grid.appendChild(card);
+    });
+  }
+
+  function renderTeamSetup(){
+    var n = clamp(parseInt($("#numTeams").value,10) || 2, 2, 10);
+    ensureTeamDraft(n);
+    var grid = $("#teamSetupGrid");
+    grid.innerHTML = "";
+    teamDraft.forEach(function(t, i){
+      var h0 = rosterHintFor(t);
+      var countMsg = h0.msg, countClass = h0.cls;
+
+      var colorSelect = el("select", {
+        oninput: function(e){ teamDraft[i].color = e.target.value; renderTeamSetup(); }
+      });
+      PALETTE.forEach(function(c, ci){
+        var opt = document.createElement("option");
+        opt.value = c;
+        opt.textContent = PALETTE_NAMES[ci];
+        opt.style.backgroundColor = c;
+        if(c.toLowerCase() === t.color.toLowerCase()) opt.selected = true;
+        colorSelect.appendChild(opt);
+      });
+
+      var head = el("div", {class:"team-setup-head"}, [
+        el("span",{class:"lane-chip", style:"background:"+t.color+";width:18px;height:18px;"}),
+        el("input", {type:"text", value:t.name, maxlength:"28", oninput:function(e){ teamDraft[i].name = e.target.value; }}),
+        colorSelect
+      ]);
+
+      if(!t.absent) t.absent = [];
+      var rows = [];
+      t.students.forEach(function(studentName){
+        rows = rows.concat(studentRow({
+          teamKey: "draft" + i,
+          name: studentName,
+          absent: t.absent.indexOf(studentName) > -1,
+          onToggleAbsent: function(){
+            var ai = t.absent.indexOf(studentName);
+            if(ai > -1) t.absent.splice(ai, 1); else t.absent.push(studentName);
+            renderTeamSetup(); validateSetup();
+          },
+          onRemove: function(){ removeDraftStudent(i, studentName); },
+          rerender: renderTeamSetup,
+          destinations: teamDraft.map(function(other, oi){
+            return { idx:oi, name: other.name || ("Team "+(oi+1)), color: other.color, go:function(){ moveDraftStudent(i, studentName, oi); } };
+          }).filter(function(d){ return d.idx !== i; })
+        }));
+      });
+
+      var addInput = el("input",{type:"text", placeholder:"Add student(s) — comma or newline separated"});
+      var addRow = el("div",{class:"add-student-row"},[
+        addInput,
+        el("button",{class:"btn btn-ghost btn-sm", type:"button", onclick:function(){
+          addDraftStudents(i, addInput.value);
+        }},["Add"])
+      ]);
+      addInput.addEventListener("keydown", function(e){
+        if(e.key === "Enter"){ e.preventDefault(); addDraftStudents(i, addInput.value); }
+      });
+
+      var card = el("div", {class:"team-setup-card"}, [
+        head,
+        el("div",{},rows),
+        addRow,
+        el("div",{class:countClass, id:"roster-hint-"+i},[countMsg])
+      ]);
+      grid.appendChild(card);
+    });
+  }
+
+  function moveDraftStudent(fromIdx, studentName, toIdx){
+    var from = teamDraft[fromIdx], to = teamDraft[toIdx];
+    if(!from || !to || fromIdx === toIdx) return;
+    var idx = from.students.indexOf(studentName);
+    if(idx === -1) return;
+    if(to.students.length >= 5){ alert((to.name||"That team") + " already has 5 students, the max per team."); return; }
+    from.absent = from.absent || []; to.absent = to.absent || [];
+    var ai = from.absent.indexOf(studentName);
+    from.students.splice(idx, 1);
+    to.students.push(studentName);
+    if(ai > -1){ from.absent.splice(ai, 1); to.absent.push(studentName); }
+    openMove = null;
+    renderTeamSetup();
+    validateSetup();
+  }
+
+  function removeDraftStudent(idx, studentName){
+    var t = teamDraft[idx];
+    if(!t) return;
+    var si = t.students.indexOf(studentName);
+    if(si === -1) return;
+    t.students.splice(si, 1);
+    if(t.absent){ var ai = t.absent.indexOf(studentName); if(ai > -1) t.absent.splice(ai, 1); }
+    renderTeamSetup();
+    validateSetup();
+  }
+
+  function addDraftStudents(idx, rawText){
+    var t = teamDraft[idx];
+    if(!t || !rawText) return;
+    var names = rawText.split(/[\n,]/).map(function(s){return s.trim();}).filter(Boolean);
+    if(!names.length) return;
+    var room = 5 - t.students.length;
+    if(names.length > room){
+      alert((t.name||"That team") + " can only take " + room + " more student" + (room===1?"":"s") + " (5 max per team). Adding the first " + room + ".");
+      names = names.slice(0, room);
+    }
+    names.forEach(function(nm){ if(t.students.indexOf(nm) === -1) t.students.push(nm); });
+    renderTeamSetup();
+    validateSetup();
+  }
+
+  function rosterHintFor(t){
+    var n = t.students.length;
+    var msg = n < 2 ? "Add at least 2 students"
+      : n > 5 ? "Max 5 students — trim the list"
+      : n + " student" + (n===1?"":"s") + " ready" + (t.absent && t.absent.length ? " (" + t.absent.length + " NP)" : "");
+    var cls = (n < 2 || n > 5) ? "hint bad" : "hint";
+    return {msg:msg, cls:cls};
+  }
+
+  function updateRosterHint(i){
+    var t = teamDraft[i];
+    if(!t) return;
+    var h = rosterHintFor(t);
+    var hintEl = document.getElementById("roster-hint-"+i);
+    if(hintEl){ hintEl.textContent = h.msg; hintEl.className = h.cls; }
+    validateSetup();
+  }
+
+  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+  var questionBank = [];
+
+  function renderCsvSummary(){
+    var wrap = $("#csvSummary");
+    var clearBtn = $("#clearCsv");
+    if(!questionBank.length){ wrap.innerHTML = ""; clearBtn.hidden = true; return; }
+    clearBtn.hidden = false;
+    var hasTopic = questionBank.some(function(q){return q.topic;});
+    var imgCount = questionBank.filter(function(q){return q.image;}).length;
+    var answerCount = questionBank.filter(function(q){return q.answer;}).length;
+    var mcCount = questionBank.filter(function(q){return q.choices && q.choices.length;}).length;
+    var rowsHtml = questionBank.slice(0,5).map(function(q){
+      var nC = (q.choices||[]).length;
+      return "<tr><td>"+escapeHtml(q.text)+"</td><td>"+(nC ? "A–"+"ABCD"[nC-1] : "—")+"</td><td>"+escapeHtml(q.topic||"—")+"</td><td>"+(q.answer ? "✅ "+escapeHtml(q.answer.length<=3?q.answer:"") : "—")+"</td><td>"+(q.image ? "🖼️ "+escapeHtml(q.image) : "—")+"</td></tr>";
+    }).join("");
+    wrap.innerHTML =
+      '<div style="margin-bottom:8px;"><span class="qcount">'+questionBank.length+'</span> question'+(questionBank.length===1?"":"s")+' loaded'
+      + (hasTopic ? "" : ' <span class="hint warn">— add a topic column to track content alignment</span>')
+      + (answerCount < questionBank.length ? ' <span class="hint warn">— '+(questionBank.length-answerCount)+' have no answer parsed (check your CSV\u2019s answer column header)</span>' : '')
+      + (mcCount ? ' · <span class="hint">'+mcCount+' multiple choice (A–D)</span>' : '')
+      + (imgCount ? ' · <span class="hint">'+imgCount+' with an image</span>' : '') + '</div>'
+      + '<div class="table-wrap"><table><thead><tr><th>Question (preview)</th><th>Choices</th><th>Topic</th><th>Answer</th><th>Image</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+  }
+
+  function handleCsvFile(file){
+    var reader = new FileReader();
+    reader.onload = function(){
+      questionBank = questionsFromCSV(String(reader.result));
+      renderCsvSummary();
+      validateSetup();
+    };
+    reader.readAsText(file);
+  }
+
+  function validateSetup(){
+    var errors = [];
+    var n = clamp(parseInt($("#numTeams").value,10) || 0, 2, 10);
+    if(teamDraft.length !== n) ensureTeamDraft(n);
+    teamDraft.forEach(function(t,i){
+      var count = t.students.length;
+      if(count < 2 || count > 5){
+        errors.push("\u201C"+(t.name||("Team "+(i+1)))+"\u201D needs 2\u20135 students (currently "+count+").");
+      }
+    });
+    if(!questionBank.length) errors.push("Upload a question bank CSV before starting.");
+
+    var box = $("#setupErrors");
+    if(errors.length){
+      box.innerHTML = '<div class="error-box">' + errors.map(escapeHtml).join("<br>") + '</div>';
+    } else {
+      box.innerHTML = "";
+    }
+    $("#startRaceBtn").disabled = errors.length > 0;
+    return errors.length === 0;
+  }
+
+  /* ---------------- start race ---------------- */
+  function startRace(){
+    if(!validateSetup()) return;
+    var distance = clamp(parseInt($("#raceDistance").value,10) || 10, 5, 20);
+    var teams = teamDraft.map(function(t){
+      var names = t.students.slice();
+      var order = shuffle(names.map(function(_,i){return i;}));
+      return {
+        id: uid(),
+        name: t.name.trim() || "Team",
+        color: t.color,
+        students: names,
+        absent: (t.absent || []).filter(function(n){ return names.indexOf(n) > -1; }),
+        nameQueue: [],
+        position: 0,
+        queue: order,
+        queuePtr: 0,
+        finished: false
+      };
+    });
+    var qOrder = shuffle(questionBank.map(function(_,i){return i;}));
+
+    var keepTheme = state.theme;
+    state = {
+      phase: "race",
+      distance: distance,
+      teams: teams,
+      questions: questionBank.slice(),
+      qQueue: qOrder,
+      qPtr: 0,
+      turnOrder: teams.map(function(t){return t.id;}),
+      turnPtr: 0,
+      current: null,
+      log: [],
+      winners: [],
+      theme: keepTheme,
+      started: true
+    };
+    save();
+    render();
+  }
+
+  /* ---------------- race logic ---------------- */
+  // Read-only: figure out who's up next WITHOUT advancing the rotation.
+  // (This gets called on every render just to show the "Up next" label, so it
+  // must never have side effects — only callTeam() is allowed to move turnPtr.)
+  function peekNextTeamId(){
+    var order = state.turnOrder;
+    if(!order.length) return null;
+    for(var i=0;i<order.length;i++){
+      var idx = (state.turnPtr + i) % order.length;
+      var candidate = order[idx];
+      var ct = teamById(candidate);
+      if(!ct.finished && presentStudents(ct).length) return candidate;
+    }
+    return null;
+  }
+
+  function teamById(id){
+    return state.teams.filter(function(t){return t.id===id;})[0];
+  }
+
+  // Everyone present gets a turn before anyone repeats. The queue holds names,
+  // and anyone moved, removed, or marked NP is dropped from it automatically.
+  function pickStudent(team){
+    var present = presentStudents(team);
+    if(!present.length) return null;
+    if(!Array.isArray(team.nameQueue)) team.nameQueue = [];
+    team.nameQueue = team.nameQueue.filter(function(n){ return present.indexOf(n) > -1; });
+    if(!team.nameQueue.length) team.nameQueue = shuffle(present);
+    return team.nameQueue.shift();
+  }
+
+  function pickQuestion(){
+    if(!state.questions.length) return null;
+    if(state.qPtr >= state.qQueue.length){
+      state.qQueue = shuffle(state.questions.map(function(_,i){return i;}));
+      state.qPtr = 0;
+    }
+    var idx = state.qQueue[state.qPtr++];
+    return state.questions[idx];
+  }
+
+  function callTeam(teamId){
+    var team = teamById(teamId);
+    if(!team || team.finished) return;
+    var student = pickStudent(team);
+    if(!student){
+      alert(team.name + " has no students marked present. Clear someone's NP in Setup → Teams & rosters.");
+      return;
+    }
+    var question = pickQuestion();
+    if(!question) return;
+    state.current = { teamId: teamId, student: student, questionId: question.id, revealed: false };
+    // advance pointer past this team for rotation continuity
+    var idx = state.turnOrder.indexOf(teamId);
+    if(idx > -1) state.turnPtr = idx + 1;
+    save();
+    render();
+  }
+
+  function markResult(correct){
+    if(!state.current) return;
+    var team = teamById(state.current.teamId);
+    var question = state.questions.filter(function(q){return q.id===state.current.questionId;})[0];
+    var before = team.position;
+    if(correct){
+      team.position = Math.min(state.distance, team.position + 1);
+    } else {
+      team.position = Math.max(0, team.position - 1);
+    }
+    var justFinished = team.position >= state.distance && before < state.distance;
+    if(justFinished){
+      team.finished = true;
+      state.winners.push(team.id);
+    }
+    state.log.push({
+      n: state.log.length + 1,
+      time: new Date().toLocaleTimeString(),
+      teamName: team.name,
+      student: state.current.student,
+      question: question ? question.text : "",
+      topic: question ? question.topic : "",
+      result: correct ? "Correct" : "Incorrect",
+      position: team.position
+    });
+    state.current = null;
+    save();
+    render();
+    if(justFinished){
+      var lane = document.querySelector('.lane[data-team="'+team.id+'"] .car-wrap');
+      if(lane){ lane.classList.add("bump"); setTimeout(function(){lane.classList.remove("bump");}, 550); }
+    }
+  }
+
+  // NP on the question card: mark the called student not present and hand the
+  // same question to a present teammate.
+  function markCurrentNotPresent(){
+    if(!state.current) return;
+    var team = teamById(state.current.teamId);
+    if(!team) return;
+    var name = state.current.student;
+    if(!isAbsent(team, name)) absentList(team).push(name);
+    syncCurrentPick();
+    save();
+    render();
+  }
+
+  /* ---------------- render: setup ---------------- */
+  function showTab(name){
+    $("#view-setup").hidden = name !== "setup";
+    $("#view-race").hidden = name !== "race";
+    $("#view-results").hidden = name !== "results";
+    $("#tab-setup").setAttribute("aria-selected", name==="setup");
+    $("#tab-race").setAttribute("aria-selected", name==="race");
+    $("#tab-results").setAttribute("aria-selected", name==="results");
+    $("#tab-race").disabled = !state.started;
+    $("#tab-results").disabled = !state.started;
+  }
+
+  /* ---------------- render: race ---------------- */
+  function renderRace(){
+    $("#raceDistLabel").textContent = state.distance + " steps";
+    applyTrackCollapsed();
+    var mini = $("#miniStandings");
+    mini.innerHTML = "";
+    state.teams.forEach(function(team){
+      var isActive = state.current && state.current.teamId === team.id;
+      var pctFill = state.distance ? Math.round((team.position / state.distance) * 100) : 0;
+      mini.appendChild(el("div",{class:"mini-team" + (team.finished?" finished":"") + (isActive?" active-turn":"")},[
+        el("span",{class:"lane-chip", style:"background:"+team.color}),
+        team.name,
+        el("span",{class:"mini-bar"},[el("span",{style:"width:"+pctFill+"%;background:"+team.color})]),
+        el("span",{class:"pos"},[team.position + "/" + state.distance + (team.finished ? " 🏆" : "")])
+      ]));
+    });
+    var lanes = $("#lanes");
+    lanes.innerHTML = "";
+    state.teams.forEach(function(team){
+      var pct = state.distance ? (team.position / state.distance) * 88 : 0; // leave room so car doesn't overrun flag
+      var isActive = state.current && state.current.teamId === team.id;
+      var lane = el("div", {class:"lane" + (team.finished?" finished":"") + (isActive?" active-turn":""), "data-team": team.id}, [
+        el("div",{class:"lane-info"},[
+          el("div",{class:"name"},[el("span",{class:"lane-chip", style:"background:"+team.color}), team.name]),
+          el("div",{class:"pos"},[team.position + " / " + state.distance + (team.finished? "  🏆":"")])
+        ]),
+        el("div",{class:"lane-track"},[
+          el("div",{class:"car-wrap", style:"left:"+pct+"%;", html: carSVG(team.color) + '<div class="car-label">'+escapeHtml(team.name)+'</div>'})
+        ])
+      ]);
+      lanes.appendChild(lane);
+    });
+
+    // winner banner
+    var wb = $("#winnerBanner");
+    if(state.winners.length){
+      var first = teamById(state.winners[0]);
+      wb.innerHTML = '<div class="winner-banner"><span>🏆 '+escapeHtml(first.name)+' crossed the finish line first!</span><span style="font-size:13px;font-weight:600;">Race can keep going, or wrap up below.</span></div>';
+    } else {
+      wb.innerHTML = "";
+    }
+
+    // turn strip
+    var strip = $("#turnStrip");
+    strip.innerHTML = "";
+    state.teams.forEach(function(team){
+      var isCurrent = state.current && state.current.teamId === team.id;
+      var nobodyHere = presentStudents(team).length === 0;
+      var chip = el("button", {
+        class:"turn-chip" + (isCurrent?" current":"") + ((team.finished || nobodyHere)?" done":""),
+        type:"button",
+        disabled: (team.finished || nobodyHere) ? "disabled" : null,
+        title: nobodyHere ? "Everyone on this team is marked NP" : null,
+        onclick: function(){ if(!team.finished) callTeam(team.id); }
+      }, [ el("span",{class:"lane-chip", style:"background:"+team.color}), team.name + (nobodyHere ? " (all NP)" : "") ]);
+      strip.appendChild(chip);
+    });
+
+    // call box
+    var box = $("#callBox");
+    box.innerHTML = "";
+    var anyActive = state.teams.some(function(t){return !t.finished;});
+    if(!anyActive){
+      box.appendChild(el("div",{class:"call-prompt"},["Every team has finished. Head to Results to see the breakdown."]));
+    } else if(state.current){
+      var team = teamById(state.current.teamId);
+      var question = state.questions.filter(function(q){return q.id===state.current.questionId;})[0];
+      var card = el("div",{class:"question-card" + (state.current.revealed ? " revealed" : "")});
+      var meta = el("div",{class:"question-meta"},[
+        el("div",{class:"question-student"},[
+          el("span",{},[ "🎙️ ", el("span",{class:"team-tag"},[team.name]), " — " + state.current.student ]),
+          el("button",{class:"np-call", type:"button", title:"Mark " + state.current.student + " not present and pick a teammate", onclick:markCurrentNotPresent},["NP"])
+        ]),
+        question.topic ? el("span",{class:"pill pill-topic"},[question.topic]) : null
+      ]);
+      card.appendChild(meta);
+      var imgSrc = resolveQuestionImage(question.image);
+      if(question.image){
+        if(imgSrc){
+          card.appendChild(el("img",{class:"question-image", src:imgSrc, alt:""}));
+        } else {
+          card.appendChild(el("div",{class:"hint warn"},["Image \u201C"+question.image+"\u201D not uploaded yet — add it under Question images in Setup."]));
+        }
+      }
+      card.appendChild(el("div",{class:"question-text"},[question.text]));
+      var correctLetter = correctLetterFor(question);
+      if(question.choices && question.choices.length){
+        var grid = el("div",{class:"choices"});
+        question.choices.forEach(function(c){
+          grid.appendChild(el("div",{class:"choice" + (c.letter === correctLetter ? " correct" : "")},[
+            el("span",{class:"letter"},[c.letter]),
+            el("span",{class:"ctext"},[c.text])
+          ]));
+        });
+        card.appendChild(grid);
+      }
+      if(question.answer){
+        // Native <details>/<summary> — the browser handles the show/hide toggle
+        // itself, so this can't be broken by our own click-handling code.
+        var reveal = document.createElement("details");
+        reveal.className = "answer-toggle";
+        var summary = document.createElement("summary");
+        summary.className = "btn btn-ghost btn-sm";
+        summary.textContent = "Show answer key (teacher only)";
+        reveal.appendChild(summary);
+        var keyText = question.answer;
+        if(correctLetter){
+          var cc = question.choices.filter(function(c){ return c.letter === correctLetter; })[0];
+          keyText = correctLetter + (cc ? " — " + cc.text : "");
+        }
+        var answerText = el("div",{class:"answer-reveal"},["Answer: " + keyText]);
+        reveal.appendChild(answerText);
+        reveal.open = !!state.current.revealed;
+        reveal.addEventListener("toggle", function(){
+          if(!state.current) return;
+          state.current.revealed = reveal.open;
+          card.classList.toggle("revealed", reveal.open);
+          save();
+        });
+        card.appendChild(reveal);
+      }
+      box.appendChild(card);
+      box.appendChild(el("div",{class:"result-btns"},[
+        el("button",{class:"btn btn-go", type:"button", onclick:function(){ markResult(true); }},["✅ Correct — move ahead"]),
+        el("button",{class:"btn btn-stop", type:"button", onclick:function(){ markResult(false); }},["❌ Incorrect — fall back"])
+      ]));
+    } else {
+      var next = peekNextTeamId();
+      var nextTeam = next ? teamById(next) : null;
+      box.appendChild(el("div",{class:"call-prompt"},[ nextTeam ? ("Up next: " + nextTeam.name) : "Choose a team below to call on." ]));
+      box.appendChild(el("button",{class:"btn btn-primary btn-wide", type:"button", style:"max-width:340px;", onclick:function(){ var id = peekNextTeamId(); if(id) callTeam(id); }},["📣 Call next team"]));
+    }
+  }
+
+  // Works out which choice is correct from the answer column: a letter (B),
+  // "choiceB", or the full text of one of the choices.
+  function correctLetterFor(q){
+    if(!q || !q.choices || !q.choices.length || !q.answer) return null;
+    var a = q.answer.trim();
+    var m = a.match(/^(?:choice|option)?\s*\(?([A-Da-d])\)?[.):]?$/);
+    if(m){
+      var L = m[1].toUpperCase();
+      return q.choices.some(function(c){ return c.letter === L; }) ? L : null;
+    }
+    var hit = q.choices.filter(function(c){ return c.text.trim().toLowerCase() === a.toLowerCase(); })[0];
+    return hit ? hit.letter : null;
+  }
+
+  /* ---------------- render: results ---------------- */
+  function computeSummaries(){
+    var byTopic = {};
+    var byStudent = {};
+    state.log.forEach(function(row){
+      var topicKey = row.topic || "(no topic tagged)";
+      byTopic[topicKey] = byTopic[topicKey] || {attempts:0, correct:0};
+      byTopic[topicKey].attempts++;
+      if(row.result === "Correct") byTopic[topicKey].correct++;
+
+      var studentKey = row.student + "\u0001" + row.teamName;
+      byStudent[studentKey] = byStudent[studentKey] || {student:row.student, team:row.teamName, attempts:0, correct:0};
+      byStudent[studentKey].attempts++;
+      if(row.result === "Correct") byStudent[studentKey].correct++;
+    });
+    return {byTopic: byTopic, byStudent: byStudent};
+  }
+
+  function renderResults(){
+    var standings = $("#standingsGrid");
+    standings.innerHTML = "";
+    var ranked = state.teams.slice().sort(function(a,b){ return b.position - a.position; });
+    ranked.forEach(function(team, i){
+      standings.appendChild(el("div",{class:"stat"},[
+        el("div",{class:"num", style:"color:"+team.color}, [ (i===0? "🥇 ":"") + team.position + "/" + state.distance ]),
+        el("div",{class:"lbl"},[team.name])
+      ]));
+    });
+
+    var sums = computeSummaries();
+
+    var topicBody = $("#topicTable tbody");
+    topicBody.innerHTML = "";
+    Object.keys(sums.byTopic).sort().forEach(function(k){
+      var d = sums.byTopic[k];
+      var pct = d.attempts ? Math.round((d.correct/d.attempts)*100) : 0;
+      topicBody.appendChild(el("tr",{},[
+        el("td",{},[k]), el("td",{},[String(d.attempts)]), el("td",{},[String(d.correct)]), el("td",{},[pct+"%"])
+      ]));
+    });
+    if(!Object.keys(sums.byTopic).length){
+      topicBody.appendChild(el("tr",{},[el("td",{colspan:"4"},["No responses logged yet."])]));
+    }
+
+    var studentBody = $("#studentTable tbody");
+    studentBody.innerHTML = "";
+    Object.keys(sums.byStudent).sort().forEach(function(k){
+      var d = sums.byStudent[k];
+      var pct = d.attempts ? Math.round((d.correct/d.attempts)*100) : 0;
+      studentBody.appendChild(el("tr",{},[
+        el("td",{},[d.student]), el("td",{},[d.team]), el("td",{},[String(d.attempts)]), el("td",{},[String(d.correct)]), el("td",{},[pct+"%"])
+      ]));
+    });
+    if(!Object.keys(sums.byStudent).length){
+      studentBody.appendChild(el("tr",{},[el("td",{colspan:"5"},["No responses logged yet."])]));
+    }
+
+    var logBody = $("#logTable tbody");
+    logBody.innerHTML = "";
+    state.log.slice().reverse().forEach(function(row){
+      logBody.appendChild(el("tr",{},[
+        el("td",{},[String(row.n)]),
+        el("td",{},[row.teamName]),
+        el("td",{},[row.student]),
+        el("td",{},[row.question]),
+        el("td",{},[row.topic || "—"]),
+        el("td",{},[el("span",{class: row.result==="Correct" ? "badge-correct" : "badge-incorrect"},[row.result])]),
+        el("td",{},[String(row.position) + "/" + state.distance])
+      ]));
+    });
+    if(!state.log.length){
+      logBody.appendChild(el("tr",{},[el("td",{colspan:"7"},["No responses logged yet."])]));
+    }
+  }
+
+  /* ---------------- downloads ---------------- */
+  // Plain browser download — this file is hosted by you, not run inside claude.ai,
+  // so there's no sandbox restriction on triggering a file save directly.
+  function saveFile(filename, text){
+    try{
+      var blob = new Blob([text], {type:"text/csv"});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+    }catch(e2){ /* nothing more we can do */ }
+  }
+
+  function downloadLog(){
+    var header = ["#","Time","Team","Student","Question","Topic","Result","Position"];
+    var lines = [header.map(csvEscape).join(",")];
+    state.log.forEach(function(r){
+      lines.push([r.n, r.time, r.teamName, r.student, r.question, r.topic, r.result, r.position + "/" + state.distance].map(csvEscape).join(","));
+    });
+    saveFile("roll-call-race-log.csv", lines.join("\n"));
+  }
+
+  function downloadSummary(){
+    var sums = computeSummaries();
+    var lines = [];
+    lines.push("Final standings");
+    lines.push(["Team","Position","Distance"].map(csvEscape).join(","));
+    state.teams.slice().sort(function(a,b){return b.position-a.position;}).forEach(function(t){
+      lines.push([t.name, t.position, state.distance].map(csvEscape).join(","));
+    });
+    lines.push("");
+    lines.push("Accuracy by topic");
+    lines.push(["Topic","Attempts","Correct","Accuracy %"].map(csvEscape).join(","));
+    Object.keys(sums.byTopic).sort().forEach(function(k){
+      var d = sums.byTopic[k];
+      var pct = d.attempts ? Math.round((d.correct/d.attempts)*100) : 0;
+      lines.push([k, d.attempts, d.correct, pct].map(csvEscape).join(","));
+    });
+    lines.push("");
+    lines.push("Accuracy by student");
+    lines.push(["Student","Team","Attempts","Correct","Accuracy %"].map(csvEscape).join(","));
+    Object.keys(sums.byStudent).sort().forEach(function(k){
+      var d = sums.byStudent[k];
+      var pct = d.attempts ? Math.round((d.correct/d.attempts)*100) : 0;
+      lines.push([d.student, d.team, d.attempts, d.correct, pct].map(csvEscape).join(","));
+    });
+    saveFile("roll-call-race-summary.csv", lines.join("\n"));
+  }
+
+  /* ---------------- display preferences (kept across races) ---------------- */
+  var UI_KEY = "rollcall_race_ui";
+  var ui = { trackCollapsed: false, textScale: 1 };
+  try{
+    var savedUi = JSON.parse(localStorage.getItem(UI_KEY) || "{}");
+    if(typeof savedUi.trackCollapsed === "boolean") ui.trackCollapsed = savedUi.trackCollapsed;
+    if(typeof savedUi.textScale === "number") ui.textScale = savedUi.textScale;
+  }catch(e){}
+  function saveUi(){ try{ localStorage.setItem(UI_KEY, JSON.stringify(ui)); }catch(e){} }
+
+  var SCALE_MIN = 0.8, SCALE_MAX = 2.0, SCALE_STEP = 0.1;
+  function applyTextScale(){
+    ui.textScale = Math.round(clamp(ui.textScale, SCALE_MIN, SCALE_MAX) * 10) / 10;
+    document.documentElement.style.setProperty("--qscale", String(ui.textScale));
+    $("#textScaleLabel").textContent = Math.round(ui.textScale * 100) + "%";
+    $("#textSmaller").disabled = ui.textScale <= SCALE_MIN;
+    $("#textBigger").disabled = ui.textScale >= SCALE_MAX;
+  }
+  function applyTrackCollapsed(){
+    var c = ui.trackCollapsed;
+    $("#trackCard").classList.toggle("collapsed", c);
+    $("#controlCard").classList.toggle("focus", c);
+    $("#lanes").hidden = c;
+    $("#miniStandings").hidden = !c;
+    $("#trackToggle").setAttribute("aria-expanded", c ? "false" : "true");
+    $("#trackToggleHint").textContent = c ? "· click the title to show the track" : "· click the title to shrink";
+  }
+
+  /* ---------------- master render ---------------- */
+  function render(){
+    showTab(state.phase);
+    if(state.phase === "setup"){
+      renderSetupView();
+    } else if(state.phase === "race"){
+      renderRace();
+    } else if(state.phase === "results"){
+      renderResults();
+    }
+  }
+
+  function renderSetupView(){
+    renderThemePicker();
+    var started = state.started;
+    $("#inRaceNotice").hidden = !started;
+    $("#preRaceOnly").hidden = started;
+    $("#preRaceOnly2").hidden = started;
+    $("#preRaceRosterTools").hidden = started;
+    $("#startRaceBtn").hidden = started;
+    $("#backToRaceBtn").hidden = !started;
+    $("#setupErrors").hidden = started;
+    $("#teamSetupGrid").hidden = started;
+    $("#rosterManagerGrid").hidden = !started;
+
+    if(started){
+      $("#rostersSub").textContent = "NP marks a student not present (they're skipped until you clear it). Δ moves a student to another team. Neither changes race positions or results.";
+      renderRosterManager();
+    } else {
+      $("#rostersSub").textContent = "Upload a roster CSV to fill in every team at once, or type students in by hand below (2–5 per team). Δ moves a student to another team; NP marks them not present.";
+      renderTeamSetup();
+      renderCsvSummary();
+      renderImageSummary();
+      validateSetup();
+    }
+  }
+
+  /* ---------------- wiring ---------------- */
+  $("#tab-setup").addEventListener("click", function(){ state.phase="setup"; save(); render(); });
+  $("#tab-race").addEventListener("click", function(){ if(state.started){ state.phase="race"; save(); render(); } });
+  $("#tab-results").addEventListener("click", function(){ if(state.started){ state.phase="results"; save(); render(); } });
+
+  $all('[data-step]').forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var which = btn.getAttribute("data-step");
+      var dir = parseInt(btn.getAttribute("data-dir"),10);
+      var input = which === "teams" ? $("#numTeams") : $("#raceDistance");
+      var min = parseInt(input.min,10), max = parseInt(input.max,10);
+      var v = clamp((parseInt(input.value,10)||min) + dir, min, max);
+      input.value = v;
+      if(which==="teams") renderTeamSetup();
+      validateSetup();
+    });
+  });
+  $("#numTeams").addEventListener("input", function(){ renderTeamSetup(); validateSetup(); });
+  $("#raceDistance").addEventListener("input", validateSetup);
+
+  var dropZone = $("#dropZone");
+  var csvInput = $("#csvInput");
+  dropZone.addEventListener("click", function(){ csvInput.click(); });
+  dropZone.addEventListener("dragover", function(e){ e.preventDefault(); dropZone.classList.add("drag"); });
+  dropZone.addEventListener("dragleave", function(){ dropZone.classList.remove("drag"); });
+  dropZone.addEventListener("drop", function(e){
+    e.preventDefault(); dropZone.classList.remove("drag");
+    if(e.dataTransfer.files && e.dataTransfer.files[0]) handleCsvFile(e.dataTransfer.files[0]);
+  });
+  csvInput.addEventListener("change", function(){
+    if(csvInput.files && csvInput.files[0]) handleCsvFile(csvInput.files[0]);
+  });
+  $("#clearCsv").addEventListener("click", function(){ questionBank = []; csvInput.value = ""; renderCsvSummary(); validateSetup(); });
+  $("#downloadTemplate").addEventListener("click", function(){ saveFile("roll-call-race-questions-template.csv", TEMPLATE_CSV); });
+
+  var rosterDropZone = $("#rosterDropZone");
+  var rosterCsvInput = $("#rosterCsvInput");
+  function handleRosterCsvFile(file){
+    var reader = new FileReader();
+    reader.onload = function(){
+      var parsed = rosterFromCSV(String(reader.result));
+      if(!parsed.length){ alert("Couldn't find any team/student rows in that CSV. Check it has \"team\" and \"student\" columns."); return; }
+      if(parsed.length > 10){ alert("That roster has " + parsed.length + " teams — only the first 10 will be loaded."); parsed = parsed.slice(0,10); }
+      var trimmedAny = parsed.some(function(t){ return t.students.length > 5; });
+      if(trimmedAny) alert("Some teams in that roster have more than 5 students — each team will be trimmed to its first 5. Move the rest onto other teams below.");
+      $("#numTeams").value = clamp(parsed.length, 2, 10);
+      teamDraft = parsed.map(function(t, i){
+        return { name: t.name, color: PALETTE[i % PALETTE.length], students: t.students.slice(0,5), absent: [] };
+      });
+      renderTeamSetup();
+      validateSetup();
+    };
+    reader.readAsText(file);
+  }
+  rosterDropZone.addEventListener("click", function(){ rosterCsvInput.click(); });
+  rosterDropZone.addEventListener("dragover", function(e){ e.preventDefault(); rosterDropZone.classList.add("drag"); });
+  rosterDropZone.addEventListener("dragleave", function(){ rosterDropZone.classList.remove("drag"); });
+  rosterDropZone.addEventListener("drop", function(e){
+    e.preventDefault(); rosterDropZone.classList.remove("drag");
+    if(e.dataTransfer.files && e.dataTransfer.files[0]) handleRosterCsvFile(e.dataTransfer.files[0]);
+  });
+  rosterCsvInput.addEventListener("change", function(){
+    if(rosterCsvInput.files && rosterCsvInput.files[0]) handleRosterCsvFile(rosterCsvInput.files[0]);
+  });
+  $("#downloadRosterTemplate").addEventListener("click", function(){ saveFile("roll-call-race-roster-template.csv", TEMPLATE_ROSTER_CSV); });
+
+  $("#imageInput").addEventListener("change", function(e){
+    if(e.target.files && e.target.files.length) handleImageFiles(e.target.files);
+  });
+
+  $("#applyCustomTheme").addEventListener("click", function(){
+    state.theme = { preset:"custom", customBg: $("#customBg").value, customAccent: $("#customAccent").value };
+    applyTheme(state.theme);
+    save();
+    renderThemePicker();
+  });
+
+  function openThemeModal(){ renderThemePicker(); $("#themeModalBackdrop").hidden = false; }
+  function closeThemeModal(){ $("#themeModalBackdrop").hidden = true; }
+  $("#settingsGearBtn").addEventListener("click", openThemeModal);
+  $("#closeThemeModal").addEventListener("click", closeThemeModal);
+  $("#themeModalBackdrop").addEventListener("click", function(e){ if(e.target.id === "themeModalBackdrop") closeThemeModal(); });
+  document.addEventListener("keydown", function(e){ if(e.key === "Escape" && !$("#themeModalBackdrop").hidden) closeThemeModal(); });
+
+  $("#trackToggle").addEventListener("click", function(){ ui.trackCollapsed = !ui.trackCollapsed; saveUi(); applyTrackCollapsed(); });
+  $("#textSmaller").addEventListener("click", function(){ ui.textScale -= SCALE_STEP; applyTextScale(); saveUi(); });
+  $("#textBigger").addEventListener("click", function(){ ui.textScale += SCALE_STEP; applyTextScale(); saveUi(); });
+
+  $("#startRaceBtn").addEventListener("click", startRace);
+  $("#backToRaceBtn").addEventListener("click", function(){ state.phase = "race"; save(); render(); });
+  $("#endRaceBtn").addEventListener("click", function(){ state.phase = "results"; save(); render(); });
+  $("#newRaceBtn").addEventListener("click", function(){
+    if(confirm("Start a brand-new race? This clears the current teams, roster and results.")){
+      var keepTheme = state.theme;
+      state = defaultState();
+      state.theme = keepTheme;
+      teamDraft = [];
+      questionBank = [];
+      imageMap = {};
+      save();
+      render();
+    }
+  });
+  $("#downloadLogBtn").addEventListener("click", downloadLog);
+  $("#downloadSummaryBtn").addEventListener("click", downloadSummary);
+
+  /* ---------------- Google Sign-In (teacher identification, optional) ---------------- */
+  function initials(name){
+    return (name||"?").trim().split(/\s+/).map(function(p){return p[0];}).slice(0,2).join("").toUpperCase();
+  }
+  function decodeJwt(token){
+    try{
+      var payload = token.split(".")[1];
+      var json = decodeURIComponent(atob(payload.replace(/-/g,"+").replace(/_/g,"/")).split("").map(function(c){
+        return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(""));
+      return JSON.parse(json);
+    }catch(e){ return null; }
+  }
+  function switchNamespace(ns){
+    currentNamespace = ns;
+    state = load() || defaultState();
+    if(!state.theme) state.theme = { preset:"forest", customBg:null, customAccent:null };
+    syncSharedTheme();
+    applyTheme(state.theme);
+    teamDraft = [];
+    questionBank = [];
+    imageMap = {};
+    ensureTeamDraft(parseInt($("#numTeams").value,10) || 4);
+    render();
+  }
+  function handleCredentialResponse(resp){
+    var payload = decodeJwt(resp.credential);
+    if(!payload) return;
+    if(window.ROLLCALL_CONFIG.RESTRICT_HOSTED_DOMAIN && payload.hd !== window.ROLLCALL_CONFIG.RESTRICT_HOSTED_DOMAIN){
+      alert("Please sign in with your " + window.ROLLCALL_CONFIG.RESTRICT_HOSTED_DOMAIN + " account.");
+      return;
+    }
+    $("#gSignInBtn").hidden = true;
+    var chip = $("#signedInChip");
+    chip.hidden = false;
+    $("#signedInInitial").textContent = initials(payload.name || payload.email);
+    $("#signedInName").textContent = payload.name || payload.email;
+    switchNamespace(payload.email || "guest");
+  }
+  window.handleCredentialResponse = handleCredentialResponse;
+
+  $("#signOutBtn").addEventListener("click", function(){
+    if(window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
+    $("#signedInChip").hidden = true;
+    $("#gSignInBtn").hidden = false;
+    switchNamespace("guest");
+  });
+
+  function initGoogleSignIn(){
+    var clientId = window.ROLLCALL_CONFIG && window.ROLLCALL_CONFIG.GOOGLE_CLIENT_ID;
+    if(!clientId){
+      $("#noAuthNote").hidden = false;
+      return;
+    }
+    if(!(window.google && google.accounts && google.accounts.id)){
+      // GIS script hasn't loaded yet (slow network, or blocked) — try again shortly.
+      setTimeout(initGoogleSignIn, 300);
+      return;
+    }
+    var initOpts = { client_id: clientId, callback: handleCredentialResponse };
+    if(window.ROLLCALL_CONFIG.RESTRICT_HOSTED_DOMAIN) initOpts.hosted_domain = window.ROLLCALL_CONFIG.RESTRICT_HOSTED_DOMAIN;
+    google.accounts.id.initialize(initOpts);
+    google.accounts.id.renderButton($("#gSignInBtn"), { theme:"filled_black", size:"medium", text:"signin", shape:"pill" });
+  }
+
+  /* ---------------- init ---------------- */
+  syncSharedTheme();
+  applyTheme(state.theme);
+  applyTextScale();
+  ensureTeamDraft(parseInt($("#numTeams").value,10) || 4);
+  render();
+  initGoogleSignIn();
+  // If the theme is changed in Roll Call or the hub in another tab, follow it here.
+  window.addEventListener("storage", function(e){
+    if(e.key === SHARED_THEME_KEY){ syncSharedTheme(); applyTheme(state.theme); renderThemePicker(); }
+  });
+})();
+</script>
+</body>
+</html>
