@@ -23,6 +23,7 @@
 </script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="course-questions.js"></script>
+<script src="live.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Titan+One&family=Rubik:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -368,6 +369,14 @@
   .empty{ text-align:center; padding:40px 20px; color:var(--text-dim); }
   .empty .big{ font-size:38px; margin-bottom:8px; }
 
+  /* ---- live mode ---- */
+  .live-status{ margin:14px auto 0; max-width:720px; padding:10px 14px; border:1.5px dashed var(--sun); border-radius:12px; font-family:var(--font-mono); font-size:14px; }
+  .live-status b{ color:var(--sun); }
+  .choice .lcount{ margin-left:auto; font-family:var(--font-mono); font-size:.8em; background:#2f3340; color:var(--text); border-radius:100px; padding:2px 9px; flex:none; }
+  .gains{ display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:14px; }
+  .gain{ display:inline-flex; align-items:center; gap:6px; background:#171A21; border:1.5px solid #3c4152; border-radius:100px; padding:6px 12px; font-size:13px; font-weight:700; }
+  .live-toggle{ display:flex; align-items:center; gap:10px; margin-top:16px; font-size:14px; font-weight:600; color:var(--text); }
+  .live-toggle input{ width:18px; height:18px; }
   [hidden]{ display:none !important; }
   .visually-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
 </style>
@@ -447,6 +456,8 @@
             </div>
           </div>
         </div>
+        <label class="live-toggle"><input type="checkbox" id="liveToggle"> Live: every student answers on their own laptop</label>
+        <div class="hint" id="liveHint">Load the class from the quiz Sheet first (below), so each answer is matched to the right student. Each team's car moves forward by the share of its students who got it right (1 of 3 right = one third of a step). Students go to <code>ap-csa-java.github.io/roll-call/live.html</code>.</div>
       </div>
     </div>
 
@@ -460,7 +471,9 @@
         </div>
         <input type="file" id="rosterCsvInput" accept=".csv,text/csv" class="visually-hidden">
         <div class="actions-row" style="margin-bottom:16px;">
+          <button class="btn btn-primary btn-sm" id="sheetClassBtn" type="button">Load a class from the quiz Sheet…</button>
           <button class="btn btn-ghost btn-sm" id="downloadRosterTemplate" type="button">Download roster CSV template</button>
+          <span class="hint" id="sheetClassStatus"></span>
         </div>
       </div>
       <div id="teamSetupGrid" class="team-setup-grid"></div>
@@ -533,6 +546,7 @@
   <section id="view-results" hidden>
     <div class="card">
       <h2>Final standings</h2>
+      <p class="sub" id="liveEndNote" hidden></p>
       <div class="stat-grid" id="standingsGrid"></div>
     </div>
 
@@ -641,6 +655,8 @@
     (children||[]).forEach(function(c){ if(c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
     return e;
   }
+  // Positions can be fractions in live mode (2 of 3 right = 0.67 of a step).
+  function fp(p){ return String(Math.round((Number(p) || 0) * 100) / 100); }
   function uid(){ return Math.random().toString(36).slice(2,10); }
   function shuffle(arr){
     var a = arr.slice();
@@ -1049,7 +1065,7 @@
       var card = el("div",{class:"roster-manager-card"},[
         el("div",{class:"head"},[
           el("div",{class:"name"},[el("span",{class:"lane-chip", style:"background:"+team.color}), team.name]),
-          el("div",{class:"pos"},[team.position + " / " + state.distance + (team.finished ? " 🏆" : "") + (npCount ? " · " + npCount + " NP" : "")])
+          el("div",{class:"pos"},[fp(team.position) + " / " + state.distance + (team.finished ? " 🏆" : "") + (npCount ? " · " + npCount + " NP" : "")])
         ]),
         el("div",{},rows),
         addRow
@@ -1282,8 +1298,17 @@
       theme: keepTheme,
       started: true
     };
+    if($("#liveToggle").checked && draftPeriod && window.Live){
+      var ids = {}, missing = [];
+      teams.forEach(function(t){ t.students.forEach(function(nm){ if(draftIds[nm]) ids[nm] = draftIds[nm]; else missing.push(nm); }); });
+      if(missing.length && !confirm(missing.length + " student(s) were typed in by hand and aren't on the quiz Sheet roster, so they can't answer live: " + missing.join(", ") + ".\n\nStart anyway?")){
+        state = load() || defaultState(); return;
+      }
+      state.live = { period: draftPeriod, ids: ids, session: "" };
+    }
     save();
     render();
+    if(state.live) liveStartSession();
   }
 
   /* ---------------- race logic ---------------- */
@@ -1392,6 +1417,218 @@
     render();
   }
 
+
+  /* ---------------- live mode (live.js + the quiz Sheet's Live.gs) ----------------
+     Every student answers on their own laptop. On reveal, each team's car moves
+     forward by the share of its present students who got it right. */
+  var draftIds = {};      // name -> student ID, when the class came from the quiz Sheet
+  var draftPeriod = "";
+  var liveMon = null;
+
+  function idOf(name){ return state.live && state.live.ids ? state.live.ids[name] : null; }
+  // { studentId: teamName } so the Sheet records each answer's team.
+  function teamsMap(){
+    var m = {};
+    state.teams.forEach(function(t){ t.students.forEach(function(n){ var id = idOf(n); if(id) m[id] = t.name; }); });
+    return m;
+  }
+  function liveStopMon(){ if(liveMon){ liveMon.stop(); liveMon = null; } }
+  function liveSetStatus(html){ var b = document.getElementById("liveStatus"); if(b) b.innerHTML = html; }
+  function liveWatch(){
+    liveStopMon();
+    if(!window.Live) return;
+    liveMon = Live.monitor(function(s){
+      var c = state.current;
+      if(!c || !c.live || c.revealed || s.seq !== c.seq) return;
+      liveSetStatus("<b>Live</b> · " + (s.answered || 0) + " of " + (s.total || 0) + " answered");
+    });
+  }
+  function updateLiveHint(){
+    var h = $("#liveHint");
+    if(!h) return;
+    h.className = "hint" + ($("#liveToggle").checked && !draftPeriod ? " warn" : "");
+  }
+
+  function loadClassFromSheet(){
+    var st = $("#sheetClassStatus");
+    if(!window.Live){ st.textContent = "live.js did not load. Reload the page."; return; }
+    st.textContent = "";
+    Live.pickPeriod("Load which class?").then(function(p){
+      return Live.loadRoster(p).then(function(list){
+        if(list.length < 4){ st.textContent = "Period " + p + " has only " + list.length + " students in the Roster tab."; return; }
+        draftIds = {}; draftPeriod = String(p);
+        var names = list.map(function(x){
+          var n = x.name || x.id, k = 2;
+          while(draftIds[n]) n = (x.name || x.id) + " (" + (k++) + ")";
+          draftIds[n] = x.id; return n;
+        });
+        if(names.length > 50) alert("Race Day holds up to 50 students (10 teams of 5). The first 50 were placed; add the rest by hand.");
+        var n = clamp(Math.max(parseInt($("#numTeams").value,10) || 4, Math.ceil(names.length / 5)), 2, 10);
+        $("#numTeams").value = n;
+        teamDraft = [];
+        ensureTeamDraft(n);
+        shuffle(names).forEach(function(nm, i){ var t = teamDraft[i % n]; if(t.students.length < 5) t.students.push(nm); });
+        $("#liveToggle").checked = true;
+        st.textContent = "Period " + p + ": " + names.length + " students in " + n + " random teams. Use Δ to adjust.";
+        renderTeamSetup(); validateSetup(); updateLiveHint();
+      });
+    }).catch(function(e){ st.textContent = window.Live ? Live.explain(e) : String(e); });
+  }
+
+  function liveStartSession(){
+    if(!state.live || !window.Live) return;
+    state.live.session = ""; state.live.ended = false; save(); render();
+    Live.teacher("start", { period: state.live.period, tool: "Race Day", teams: teamsMap() }).then(function(r){
+      if(!r.ok) throw new Error(r.error);
+      state.live.session = r.session; save(); render();
+    }).catch(function(e){
+      var m = Live.explain(e);
+      alert("Live didn't start" + (m ? ": " + m : "") + ". The race will run without laptops.");
+      state.live = null; save(); render();
+    });
+  }
+  function liveEndSession(){
+    if(!state.live || !state.live.session || state.live.ended || !window.Live) return;
+    liveStopMon();
+    state.live.ended = true; state.live.endNote = "Saving the live session…"; save();
+    Live.teacher("end").then(function(r){
+      var sum = r && r.summary;
+      if(sum && sum.students.length){
+        var avg = sum.students.reduce(function(a,p){ return a + p.percent; }, 0) / sum.students.length;
+        state.live.endNote = "Live session saved to the quiz Sheet: " + sum.asked + " questions, " + sum.students.length +
+          " students, class average " + Math.round(avg * 100) + "%. For Canvas: quiz Sheet → Live → Build Canvas import.";
+      } else state.live.endNote = "Live session ended.";
+      save(); render();
+    }).catch(function(e){ state.live.endNote = "Couldn't reach the quiz Sheet to end the session (" + Live.explain(e) + "). It's saved when the next session starts, or use Live → Stop any live session now."; save(); render(); });
+  }
+
+  function liveQuestionOk(q){ return q && q.choices && q.choices.length >= 2 && correctLetterFor(q); }
+  function liveAsk(){
+    var q = null;
+    for(var i = 0; i < state.questions.length; i++){ var cand = pickQuestion(); if(liveQuestionOk(cand)){ q = cand; break; } }
+    if(!q){ alert("Live needs multiple-choice questions with an answer key (A–D). This question bank doesn't have any."); return; }
+    var letter = correctLetterFor(q);
+    var choiceTexts = q.choices.map(function(c){ return c.text; });
+    state.current = { live:true, questionId:q.id, seq:null, revealed:false };
+    var mine = state.current;
+    save(); render();
+    Live.teacher("push", { teams: teamsMap(), q: {
+      key: Live.keyFor(q.id && /^\d/.test(q.id) ? q.id : "", q.text + "|" + choiceTexts.join("|")),
+      prompt: q.text, code: q.code || "", choices: choiceTexts,
+      correct: q.choices.map(function(c){ return c.letter; }).indexOf(letter), fmt: q.fmt || "" } }).then(function(r){
+      if(state.current !== mine) return;
+      if(!r.ok){
+        liveSetStatus("<b>Live</b> · " + escapeHtml(r.error === "no-session" ? "the live session isn't running. Use Resume live below." : r.error));
+        if(r.error === "no-session"){ state.live.ended = true; state.current = null; save(); setTimeout(render, 2500); }
+        return;
+      }
+      mine.seq = r.seq; save();
+      liveSetStatus("<b>Live</b> · 0 of " + r.students + " answered");
+      liveWatch();
+    }).catch(function(e){
+      if(state.current !== mine) return;
+      state.current = null; save(); render();
+      alert("Couldn't send the question to the laptops: " + Live.explain(e) + "\nClick Ask the class to try again.");
+    });
+  }
+
+  function liveRevealNow(){
+    var c = state.current;
+    if(!c || !c.live || c.revealed) return;
+    if(!c.seq){ alert("Still sending the question to the laptops. Try again in a moment."); return; }
+    liveStopMon();
+    var btn = document.getElementById("liveRevealBtn"); if(btn) btn.disabled = true;
+    liveSetStatus("<b>Live</b> · collecting answers…");
+    Live.teacher("reveal", { seq: c.seq, teams: teamsMap() }).then(function(r){
+      if(state.current !== c) return;
+      if(!r.ok){ liveSetStatus("<b>Live</b> · " + escapeHtml(r.error)); if(btn) btn.disabled = false; return; }
+      var question = state.questions.filter(function(q){ return q.id === c.questionId; })[0];
+      var res = r.results || {}, right = 0;
+      c.revealed = true; c.counts = r.counts; c.gains = [];
+      state.teams.forEach(function(team){
+        var members = presentStudents(team).filter(function(n){ return idOf(n); });
+        var got = members.filter(function(n){ return res[idOf(n)] === true; }).length;
+        var before = team.position;
+        if(!team.finished && members.length){
+          team.position = Math.min(state.distance, team.position + got / members.length);
+          if(team.position >= state.distance - 1e-6){ team.position = state.distance; team.finished = true; state.winners.push(team.id); }
+        }
+        c.gains.push({ teamId: team.id, got: got, of: members.length, step: team.position - before });
+        members.forEach(function(n){
+          var id = idOf(n);
+          state.log.push({ n: state.log.length + 1, time: new Date().toLocaleTimeString(), teamName: team.name, student: n,
+            question: question ? question.text : "", topic: question ? question.topic : "",
+            result: res[id] === true ? "Correct" : (id in res ? "Incorrect" : "No answer"), position: team.position });
+        });
+        right += got;
+      });
+      c.summary = right + " of " + r.answered + " right" + (r.total > r.answered ? " · " + (r.total - r.answered) + " didn't answer" : "");
+      save(); render();
+    }).catch(function(e){ liveSetStatus("<b>Live</b> · " + escapeHtml(Live.explain(e))); if(btn) btn.disabled = false; });
+  }
+
+  function renderLiveBox(box){
+    var c = state.current;
+    if(!c){
+      if(state.live.ended){
+        box.appendChild(el("div",{class:"call-prompt"},["The live session was ended (it ends when you open Results)."]));
+        box.appendChild(el("button",{class:"btn btn-primary btn-wide", type:"button", style:"max-width:340px;", onclick: liveStartSession},["📡 Resume live"]));
+        return;
+      }
+      var ready = !!state.live.session;
+      box.appendChild(el("div",{class:"call-prompt"},[ ready
+        ? "Ask the whole class. Students answer at ap-csa-java.github.io/roll-call/live.html (Period " + state.live.period + ")."
+        : "Connecting to the quiz Sheet…" ]));
+      box.appendChild(el("button",{class:"btn btn-primary btn-wide", type:"button", style:"max-width:340px;", disabled: ready ? null : "disabled", onclick: liveAsk},["📣 Ask the class"]));
+      return;
+    }
+    var question = state.questions.filter(function(q){ return q.id === c.questionId; })[0];
+    if(!question){ state.current = null; save(); return; }
+    var card = el("div",{class:"question-card" + (c.revealed ? " revealed" : "")});
+    card.appendChild(el("div",{class:"question-meta"},[
+      el("div",{class:"question-student"},["🎙️ Whole class"]),
+      question.topic ? el("span",{class:"pill pill-topic"},[question.topic]) : null
+    ]));
+    var imgSrc = resolveQuestionImage(question.image);
+    if(imgSrc) card.appendChild(el("img",{class:"question-image", src:imgSrc, alt:""}));
+    if(question.fmt === "md" && window.CourseQuestions){
+      card.appendChild(el("div",{class:"question-text", html: CourseQuestions.promptHtml({prompt:question.text, code:question.code})}));
+    } else {
+      card.appendChild(el("div",{class:"question-text"},[question.text]));
+    }
+    var correctLetter = correctLetterFor(question);
+    var grid = el("div",{class:"choices"});
+    question.choices.forEach(function(ch, i){
+      grid.appendChild(el("div",{class:"choice" + (ch.letter === correctLetter ? " correct" : "")},[
+        el("span",{class:"letter"},[ch.letter]),
+        (question.fmt === "md" && window.CourseQuestions) ? el("span",{class:"ctext", html: CourseQuestions.inline(ch.text)}) : el("span",{class:"ctext"},[ch.text]),
+        c.revealed && c.counts ? el("span",{class:"lcount", title:"students who picked this"},[String(c.counts[i] || 0)]) : null
+      ]));
+    });
+    card.appendChild(grid);
+    box.appendChild(card);
+    box.appendChild(el("div",{class:"live-status", id:"liveStatus", html: c.revealed
+      ? "<b>Live</b> · " + escapeHtml(c.summary || "")
+      : (c.seq ? "<b>Live</b> · waiting for answers…" : "<b>Live</b> · sending to laptops…")}));
+    if(!c.revealed){
+      box.appendChild(el("div",{class:"result-btns"},[
+        el("button",{class:"btn btn-go", id:"liveRevealBtn", type:"button", onclick: liveRevealNow},["🔑 Reveal answer & move cars"])
+      ]));
+    } else {
+      var gains = el("div",{class:"gains"});
+      (c.gains || []).forEach(function(g){
+        var t = teamById(g.teamId); if(!t) return;
+        gains.appendChild(el("span",{class:"gain"},[
+          el("span",{class:"lane-chip", style:"background:"+t.color}), t.name + "  +" + fp(g.step) + "  (" + g.got + "/" + g.of + ")"
+        ]));
+      });
+      box.appendChild(gains);
+      box.appendChild(el("div",{class:"result-btns"},[
+        el("button",{class:"btn btn-primary", type:"button", onclick:function(){ state.current = null; save(); render(); }},["➡️ Next question"])
+      ]));
+    }
+  }
+
   /* ---------------- render: setup ---------------- */
   function showTab(name){
     $("#view-setup").hidden = name !== "setup";
@@ -1417,7 +1654,7 @@
         el("span",{class:"lane-chip", style:"background:"+team.color}),
         team.name,
         el("span",{class:"mini-bar"},[el("span",{style:"width:"+pctFill+"%;background:"+team.color})]),
-        el("span",{class:"pos"},[team.position + "/" + state.distance + (team.finished ? " 🏆" : "")])
+        el("span",{class:"pos"},[fp(team.position) + "/" + state.distance + (team.finished ? " 🏆" : "")])
       ]));
     });
     var lanes = $("#lanes");
@@ -1428,7 +1665,7 @@
       var lane = el("div", {class:"lane" + (team.finished?" finished":"") + (isActive?" active-turn":""), "data-team": team.id}, [
         el("div",{class:"lane-info"},[
           el("div",{class:"name"},[el("span",{class:"lane-chip", style:"background:"+team.color}), team.name]),
-          el("div",{class:"pos"},[team.position + " / " + state.distance + (team.finished? "  🏆":"")])
+          el("div",{class:"pos"},[fp(team.position) + " / " + state.distance + (team.finished? "  🏆":"")])
         ]),
         el("div",{class:"lane-track"},[
           el("div",{class:"car-wrap", style:"left:"+pct+"%;", html: carSVG(team.color) + '<div class="car-label">'+escapeHtml(team.name)+'</div>'})
@@ -1449,6 +1686,7 @@
     // turn strip
     var strip = $("#turnStrip");
     strip.innerHTML = "";
+    strip.hidden = !!state.live;
     state.teams.forEach(function(team){
       var isCurrent = state.current && state.current.teamId === team.id;
       var nobodyHere = presentStudents(team).length === 0;
@@ -1468,6 +1706,8 @@
     var anyActive = state.teams.some(function(t){return !t.finished;});
     if(!anyActive){
       box.appendChild(el("div",{class:"call-prompt"},["Every team has finished. Head to Results to see the breakdown."]));
+    } else if(state.live){
+      renderLiveBox(box);
     } else if(state.current){
       var team = teamById(state.current.teamId);
       var question = state.questions.filter(function(q){return q.id===state.current.questionId;})[0];
@@ -1575,12 +1815,15 @@
   }
 
   function renderResults(){
+    var note = $("#liveEndNote");
+    note.hidden = !(state.live && state.live.endNote);
+    note.textContent = state.live && state.live.endNote ? state.live.endNote : "";
     var standings = $("#standingsGrid");
     standings.innerHTML = "";
     var ranked = state.teams.slice().sort(function(a,b){ return b.position - a.position; });
     ranked.forEach(function(team, i){
       standings.appendChild(el("div",{class:"stat"},[
-        el("div",{class:"num", style:"color:"+team.color}, [ (i===0? "🥇 ":"") + team.position + "/" + state.distance ]),
+        el("div",{class:"num", style:"color:"+team.color}, [ (i===0? "🥇 ":"") + fp(team.position) + "/" + state.distance ]),
         el("div",{class:"lbl"},[team.name])
       ]));
     });
@@ -1623,7 +1866,7 @@
         el("td",{},[row.question]),
         el("td",{},[row.topic || "—"]),
         el("td",{},[el("span",{class: row.result==="Correct" ? "badge-correct" : "badge-incorrect"},[row.result])]),
-        el("td",{},[String(row.position) + "/" + state.distance])
+        el("td",{},[fp(row.position) + "/" + state.distance])
       ]));
     });
     if(!state.log.length){
@@ -1649,7 +1892,7 @@
     var header = ["#","Time","Team","Student","Question","Topic","Result","Position"];
     var lines = [header.map(csvEscape).join(",")];
     state.log.forEach(function(r){
-      lines.push([r.n, r.time, r.teamName, r.student, r.question, r.topic, r.result, r.position + "/" + state.distance].map(csvEscape).join(","));
+      lines.push([r.n, r.time, r.teamName, r.student, r.question, r.topic, r.result, fp(r.position) + "/" + state.distance].map(csvEscape).join(","));
     });
     saveFile("roll-call-race-log.csv", lines.join("\n"));
   }
@@ -1660,7 +1903,7 @@
     lines.push("Final standings");
     lines.push(["Team","Position","Distance"].map(csvEscape).join(","));
     state.teams.slice().sort(function(a,b){return b.position-a.position;}).forEach(function(t){
-      lines.push([t.name, t.position, state.distance].map(csvEscape).join(","));
+      lines.push([t.name, fp(t.position), state.distance].map(csvEscape).join(","));
     });
     lines.push("");
     lines.push("Accuracy by topic");
@@ -1823,6 +2066,14 @@
   rosterCsvInput.addEventListener("change", function(){
     if(rosterCsvInput.files && rosterCsvInput.files[0]) handleRosterCsvFile(rosterCsvInput.files[0]);
   });
+  $("#sheetClassBtn").addEventListener("click", loadClassFromSheet);
+  $("#liveToggle").addEventListener("change", function(){
+    if($("#liveToggle").checked && !draftPeriod){
+      alert("Load the class from the quiz Sheet first (Teams & rosters → Load a class from the quiz Sheet). Live needs each student's ID to match answers.");
+      $("#liveToggle").checked = false;
+    }
+    updateLiveHint();
+  });
   $("#downloadRosterTemplate").addEventListener("click", function(){ saveFile("roll-call-race-roster-template.csv", TEMPLATE_ROSTER_CSV); });
 
   $("#imageInput").addEventListener("change", function(e){
@@ -1849,9 +2100,10 @@
 
   $("#startRaceBtn").addEventListener("click", startRace);
   $("#backToRaceBtn").addEventListener("click", function(){ state.phase = "race"; save(); render(); });
-  $("#endRaceBtn").addEventListener("click", function(){ state.phase = "results"; save(); render(); });
+  $("#endRaceBtn").addEventListener("click", function(){ state.phase = "results"; save(); render(); liveEndSession(); });
   $("#newRaceBtn").addEventListener("click", function(){
     if(confirm("Start a brand-new race? This clears the current teams, roster and results.")){
+      liveEndSession(); liveStopMon();
       var keepTheme = state.theme;
       state = defaultState();
       state.theme = keepTheme;
@@ -1936,6 +2188,9 @@
   applyTextScale();
   ensureTeamDraft(parseInt($("#numTeams").value,10) || 4);
   render();
+  if(state.current && state.current.live && !state.current.revealed){
+    if(state.current.seq) liveWatch(); else { state.current = null; save(); render(); }   // never reached the laptops
+  }
   initGoogleSignIn();
   // If the theme is changed in Roll Call or the hub in another tab, follow it here.
   window.addEventListener("storage", function(e){

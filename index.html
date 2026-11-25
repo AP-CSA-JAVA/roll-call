@@ -7,6 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="course-questions.js"></script>
+<script src="live.js"></script>
 <script>try{var __t=JSON.parse(localStorage.getItem('rc_theme')||'null'); if(__t) document.documentElement.setAttribute('data-theme', __t);}catch(e){}</script>
 <style>
   :root{
@@ -178,6 +179,10 @@
     font-family: var(--mono); font-size: 12px; cursor:pointer;
   }
   .status{ font-family: var(--mono); font-size: 13px; color: var(--yellow); margin-top: 10px; min-height: 18px; }
+  /* live mode */
+  .livebar{ margin: 12px 0 0; padding: 10px 14px; border: 1.5px dashed var(--yellow); border-radius: var(--radius); font-family: var(--mono); font-size: 14px; color: var(--chalk); }
+  .livebar b{ color: var(--yellow); }
+  .livecount{ margin-left: auto; font-family: var(--mono); font-size: .8em; padding: 2px 9px; border-radius: 100px; background: var(--panel-raised); color: var(--chalk); flex: none; }
   select#pRoster, select#pBank{ margin-bottom: 0; }
   /* ---- Call on Someone: compact setup ---- */
   .selrow{ display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 4px; }
@@ -394,6 +399,11 @@
     </div>
     <div class="status" id="rosterStatus"></div>
 
+    <h2 style="margin-top:22px;">Or load a class from the quiz Sheet</h2>
+    <p class="hint">Uses the Roster tab in your Check for Understanding Sheet (Student ID, Name, Period). Needed for Live mode, so each answer is matched to the right student.</p>
+    <div class="row"><button class="btn" id="sheetRosterBtn" type="button">Load a class…</button></div>
+    <div class="status" id="sheetRosterStatus"></div>
+
     <div class="savedlist" id="rosterList"></div>
   </section>
 
@@ -480,6 +490,16 @@
           <label class="check"><input type="checkbox" id="chimeOn"> Chime when time is up</label>
         </div>
         <p class="hint" style="margin:8px 0 0;">With think time on, the question appears first and the timer counts down while students discuss. The student's name is revealed when the timer ends. The maximum is 60 seconds.</p>
+      </details>
+
+      <details class="attend" id="livePanel">
+        <summary>Live: students answer on laptops <span class="pill" id="livePill">off</span></summary>
+        <p class="hint" style="margin-top:10px;">Each question you call also appears on every student's laptop at <strong>ap-csa-java.github.io/roll-call/live.html</strong>. Each student answers once and is scored on their own answer. After class, the quiz Sheet's <strong>Live</strong> menu turns the session's percent correct into a Canvas import. The period comes from the roster if you loaded it from the quiz Sheet.</p>
+        <div class="row">
+          <button class="btn" id="liveStartBtn" type="button">Start live session</button>
+          <button class="btn secondary" id="liveEndBtn" type="button">End session</button>
+        </div>
+        <div class="status" id="liveInfo"></div>
       </details>
     </div>
 
@@ -845,6 +865,7 @@ function renderRosterList(){
   ).join('');
   el.querySelectorAll('.delRoster').forEach(b=>b.addEventListener('click', ()=>{
     delete rosters[b.dataset.r];
+    if(typeof rosterMeta !== 'undefined'){ delete rosterMeta[b.dataset.r]; save('rc_roster_meta', rosterMeta); }
     delete attendance[b.dataset.r];
     delete session[b.dataset.r];
     save('rc_rosters', rosters);
@@ -917,6 +938,107 @@ document.getElementById('courseQBtn').addEventListener('click', ()=>{
     if(typeof refreshPracticeSelects === 'function') refreshPracticeSelects();
   }});
 });
+// ---------- CLASS FROM THE QUIZ SHEET + LIVE MODE (live.js) ----------
+let rosterMeta = load('rc_roster_meta', {});   // { rosterLabel: { period, ids: { name: studentId } } } for Sheet rosters
+document.getElementById('sheetRosterBtn').addEventListener('click', ()=>{
+  const st = document.getElementById('sheetRosterStatus');
+  if(!window.Live){ st.textContent = 'live.js did not load. Reload the page.'; return; }
+  st.textContent = '';
+  Live.pickPeriod('Load which class?').then(p=> Live.loadRoster(p).then(list=>{
+    if(!list.length){ st.textContent = 'Period ' + p + ' has no students in the Roster tab.'; return; }
+    const label = 'Period ' + p, ids = {}, names = [];
+    list.forEach(x=>{ let n = x.name || x.id, k = 2; while(ids[n]) n = (x.name || x.id) + ' (' + (k++) + ')'; ids[n] = x.id; names.push(n); });
+    if(rosters[label] && !confirm('Replace the saved roster "' + label + '"?')) return;
+    rosters[label] = names; rosterMeta[label] = { period: String(p), ids: ids };
+    save('rc_rosters', rosters); save('rc_roster_meta', rosterMeta);
+    st.textContent = 'Saved "' + label + '" with ' + names.length + ' students.';
+    renderRosterList(); refreshPracticeSelects();
+  })).catch(e=>{ st.textContent = Live.explain(e); });
+});
+
+let liveSess = load('rc_live', null);   // { period, session } while a live session runs
+let liveQ = null;                       // the question on screen: { key, seq, revealed }
+let liveMon = null;
+function liveRefreshUI(){
+  document.getElementById('livePill').textContent = liveSess ? 'on · Period ' + liveSess.period : 'off';
+  document.getElementById('liveStartBtn').disabled = !!liveSess;
+  document.getElementById('liveEndBtn').disabled = !liveSess;
+}
+function liveSetBar(html){ const b = document.getElementById('liveBar'); if(b) b.innerHTML = html; }
+function liveStopMon(){ if(liveMon){ liveMon.stop(); liveMon = null; } }
+function liveWatch(){
+  liveStopMon();
+  liveMon = Live.monitor(s=>{
+    if(!liveQ || liveQ.revealed || s.seq !== liveQ.seq) return;
+    if(s.active === false){ liveSetBar('<b>Live</b> · the session was ended'); liveStopMon(); return; }
+    liveSetBar('<b>Live</b> · ' + (s.answered || 0) + ' of ' + (s.total || 0) + ' answered');
+  });
+}
+document.getElementById('liveStartBtn').addEventListener('click', ()=>{
+  const info = document.getElementById('liveInfo');
+  if(!window.Live){ info.textContent = 'live.js did not load. Reload the page.'; return; }
+  const meta = rosterMeta[document.getElementById('pRoster').value];
+  const getPeriod = meta ? Promise.resolve(meta.period) : Live.pickPeriod('Live session for which period?');
+  info.textContent = 'Starting…';
+  getPeriod.then(p=> Live.teacher('start', { period: p, tool: 'Roll Call' }).then(r=>{
+    if(!r.ok) throw new Error(r.error);
+    liveSess = { period: String(p), session: r.session }; save('rc_live', liveSess);
+    info.textContent = 'Live for Period ' + p + ' (' + r.students + ' students). Students open ' + Live.studentUrl + ' and sign in.';
+  })).catch(e=>{ info.textContent = Live.explain(e); }).then(liveRefreshUI);
+});
+document.getElementById('liveEndBtn').addEventListener('click', ()=>{
+  const info = document.getElementById('liveInfo');
+  info.textContent = 'Saving…';
+  Live.teacher('end').then(r=>{
+    liveStopMon(); liveSess = null; liveQ = null; save('rc_live', null);
+    const sum = r.summary;
+    if(sum && sum.students.length){
+      const avg = sum.students.reduce((a,p)=>a + p.percent, 0) / sum.students.length;
+      info.textContent = 'Session saved: ' + sum.asked + ' questions, ' + sum.students.length + ' students, class average ' + Math.round(avg * 100) + '%. Canvas: quiz Sheet → Live menu.';
+    } else info.textContent = 'Session ended.';
+  }).catch(e=>{ info.textContent = Live.explain(e); }).then(liveRefreshUI);
+});
+// Sends the question on screen to the students' laptops (called at the end of renderStage).
+function livePush(question){
+  if(!liveSess || !window.Live) return;
+  const qcard = document.querySelector('#stage .qcard');
+  if(!qcard) return;
+  qcard.insertAdjacentHTML('afterend', '<div class="livebar" id="liveBar"><b>Live</b> · sending to laptops…</div>');
+  const key = Live.keyFor(question.id, question.q + '|' + question.choices.join('|'));
+  if(liveQ && liveQ.key === key && !liveQ.revealed && liveQ.seq){ liveWatch(); return; }   // same question (NP re-pick)
+  liveStopMon();
+  liveQ = { key: key, seq: null, revealed: false };
+  const mine = liveQ;
+  Live.teacher('push', { q: { key: key, prompt: question.q, code: question.code || '', choices: question.choices,
+                              correct: question.correct, fmt: question.fmt || '' } }).then(r=>{
+    if(liveQ !== mine) return;
+    if(!r.ok){
+      if(r.error === 'no-session'){ liveSess = null; save('rc_live', null); liveRefreshUI(); liveSetBar('<b>Live</b> · the session was ended. Start a new one under Live.'); }
+      else liveSetBar('<b>Live</b> · ' + escapeHtml(r.error));
+      return;
+    }
+    mine.seq = r.seq;
+    if(mine.revealWanted) liveReveal(); else liveWatch();
+  }).catch(e=>{ liveSetBar('<b>Live</b> · ' + escapeHtml(Live.explain(e))); });
+}
+// Reveal on the laptops too, then show how many picked each choice.
+function liveReveal(){
+  if(!liveSess || !liveQ || liveQ.revealed) return;
+  if(!liveQ.seq){ liveQ.revealWanted = true; return; }   // push still on its way
+  liveStopMon();
+  const mine = liveQ;
+  Live.teacher('reveal', { seq: mine.seq }).then(r=>{
+    if(liveQ !== mine) return;
+    if(!r.ok){ liveSetBar('<b>Live</b> · ' + escapeHtml(r.error)); return; }
+    mine.revealed = true;
+    const right = Object.keys(r.results).filter(id=>r.results[id]).length;
+    liveSetBar('<b>Live</b> · ' + right + ' of ' + r.answered + ' right' + (r.total > r.answered ? ' · ' + (r.total - r.answered) + ' didn\'t answer' : ''));
+    const rows = document.querySelectorAll('#stage .choice');
+    r.counts.forEach((c,i)=>{ if(rows[i]) rows[i].insertAdjacentHTML('beforeend', '<span class="livecount" title="students who picked this">' + c + '</span>'); });
+  }).catch(e=>{ liveSetBar('<b>Live</b> · ' + escapeHtml(Live.explain(e))); });
+}
+liveRefreshUI();
+
 // A question's identity: course questions use their id, CSV questions their text.
 function qKey(q){ return q.id || q.q; }
 
@@ -1314,7 +1436,9 @@ function renderStage(rLabel, student, bLabel, question, note, secs){
     document.getElementById('timerSkip').addEventListener('click', ()=>{ stopTimer(); showName(); });
     startTimer(secs, showName);
   }
+  livePush(question);
   document.getElementById('revealBtn').addEventListener('click', ()=>{
+    liveReveal();
     stage.querySelectorAll('.choice')[question.correct].classList.add('correct');
     document.getElementById('revealBtn').style.display = 'none';
     document.getElementById('npBtn').style.display = 'none';

@@ -14,6 +14,8 @@ This repository is public (GitHub Pages on a free plan requires that). It should
 - `index.html` — Roll Call
 - `teams.html` — Roll Call Teams: Race Day (team race mode)
 - `course-questions.js` — loads Check for Understanding questions from the course site (used by both pages)
+- `live.html` — the student page for Live mode
+- `live.js` — Live mode's connection to the quiz Sheet (used by Roll Call, Race Day and live.html)
 - `README.md`, `README-google-signin.md`
 
 **Do not commit question-bank CSV files, rosters, or exports here.** Anyone can read a public repository,
@@ -64,3 +66,25 @@ Type sections or a range (`1.01-1.05`, `2.03, 2.04`, `3` for all of Unit 3) or t
 - In Race Day, each question's section (e.g. `2.04a`) is its topic, so **Accuracy by topic** shows results per section.
 - If a unit page on the course site is renamed or a new unit page is added, update `PAGES` at the top of `course-questions.js`.
 - It only works on the published site, not from a file opened on the computer.
+
+## Live mode (students answer on their laptops)
+
+The question you show in Roll Call or Race Day also appears on every student's laptop at
+`https://ap-csa-java.github.io/roll-call/live.html`. Each student signs in with their Student ID, answers once,
+and sees whether they were right when you reveal. Each answer is scored for that student.
+
+- **Backend:** the quiz Sheet (the one the course site's Check for Understanding uses): `Live.gs` plus one line in
+  `Code.gs`. Copies are in the private `csaPrograms` repo, `apps-script/csa-quiz-sheet/`.
+- **Roster:** the quiz Sheet's Roster tab (Student ID, Name, Period). *Load a class* in Roll Call or Race Day reads it,
+  so no student names are stored in this repo.
+- **Teacher passcode:** set in the Sheet (Live → Set teacher passcode). The teacher pages ask for it once per computer.
+- **Roll Call:** Call on Someone → *Live* section → Start live session. Every question you call goes out; *Reveal answer*
+  reveals it on the laptops and shows how many picked each choice. The called student is still shown for discussion.
+- **Race Day:** load the class from the quiz Sheet, check *Live*, start the race, then *Ask the class*. Everyone answers
+  every question. On reveal, each team's car moves forward by the share of its present students who got it right
+  (2 of 3 right = 0.67 of a step). Cars don't move back in Live mode.
+- **Scores:** each session is saved in the Sheet (Live Questions, Live Results). Percent correct = right answers ÷
+  questions asked in that session (a question nobody answered doesn't count). Students who answered nothing are
+  treated as absent and left blank. **Live → Build Canvas import for a live session…** makes the Canvas file.
+- Students' screens update every ~3 seconds, so a question shows on the projector first and on laptops a moment later.
+- If the internet drops, the teacher page shows the error; nothing is lost on the Sheet side.
