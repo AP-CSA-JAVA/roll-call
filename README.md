@@ -13,6 +13,7 @@ This repository is public (GitHub Pages on a free plan requires that). It should
 
 - `index.html` — Roll Call
 - `teams.html` — Roll Call Teams: Race Day (team race mode)
+- `course-questions.js` — loads Check for Understanding questions from the course site (used by both pages)
 - `README.md`, `README-google-signin.md`
 
 **Do not commit question-bank CSV files, rosters, or exports here.** Anyone can read a public repository,
@@ -49,3 +50,17 @@ moves it back. It reads the same question-bank CSVs as Roll Call. Published at
 Roll Call, Race Day and the Teacher Hub (`ap-csa-java.github.io/hub/`) share one theme choice, saved in
 the browser key `rc_theme`. Pick a theme in any of them and the others match on that computer.
 Race Day's custom colors stay on Race Day only.
+
+## Course questions (Check for Understanding)
+
+Both pages have a **Course questions…** button (Roll Call: *Question Banks* tab; Race Day: *Question bank* card).
+Type sections or a range (`1.01-1.05`, `2.03, 2.04`, `3` for all of Unit 3) or tap sections, then **Load questions**.
+
+- Questions are read live from the course site pages (`ap-csa-java.github.io/CSA_JAVA-Course/...`), so new CFU
+  questions appear automatically. Nothing is copied into this repo.
+- Only one-answer multiple choice with 2-4 choices is used. Fill-in/output, select-all and 5-6 choice questions are skipped.
+- Answer choices are shuffled each time a set is loaded.
+- A range includes lettered parts: `1.01-1.05` also brings in 1.01a and 1.01v. Unit 5's `5.1` is shown as `5.01`.
+- In Race Day, each question's section (e.g. `2.04a`) is its topic, so **Accuracy by topic** shows results per section.
+- If a unit page on the course site is renamed or a new unit page is added, update `PAGES` at the top of `course-questions.js`.
+- It only works on the published site, not from a file opened on the computer.

@@ -6,6 +6,7 @@
 <title>Roll Call — Random Student &amp; Question Picker</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="course-questions.js"></script>
 <script>try{var __t=JSON.parse(localStorage.getItem('rc_theme')||'null'); if(__t) document.documentElement.setAttribute('data-theme', __t);}catch(e){}</script>
 <style>
   :root{
@@ -415,6 +416,13 @@
       <button class="btn" id="saveBank">Save question bank</button>
     </div>
     <div class="status" id="bankStatus"></div>
+
+    <h2 style="margin-top:22px;">Or load from the course site</h2>
+    <p class="hint">Pull Check for Understanding multiple-choice questions for any sections, e.g. <strong>1.01-1.05</strong>. They're saved as a topic like a CSV would be.</p>
+    <div class="row">
+      <button class="btn" id="courseQBtn" type="button">Course questions…</button>
+    </div>
+    <div class="status" id="courseQStatus"></div>
 
     <div class="savedlist" id="bankList"></div>
   </section>
@@ -894,6 +902,24 @@ document.getElementById('saveBank').addEventListener('click', ()=>{
   reader.readAsText(file);
 });
 
+// ---------- COURSE QUESTIONS (course-questions.js) ----------
+document.getElementById('courseQBtn').addEventListener('click', ()=>{
+  const status = document.getElementById('courseQStatus');
+  if(!window.CourseQuestions){ status.textContent = 'The course-questions.js file did not load. Reload the page and try again.'; return; }
+  CourseQuestions.open({ askName: true, onLoad: (qs, label)=>{
+    if(!qs.length){ status.textContent = 'No questions found for those sections.'; return; }
+    if(banks[label] && !confirm('Replace the saved topic "' + label + '"?')) return;
+    // fmt:'md' = show `code`, **bold** and a code block; id keeps questions with the same wording apart.
+    banks[label] = qs.map(q=>({ id: q.id, q: q.prompt, code: q.code, fmt: 'md', choices: q.choices, correct: q.correct }));
+    save('rc_banks', banks);
+    status.textContent = 'Saved "' + label + '" with ' + qs.length + ' questions. Pick it under Call on Someone.';
+    renderBankList();
+    if(typeof refreshPracticeSelects === 'function') refreshPracticeSelects();
+  }});
+});
+// A question's identity: course questions use their id, CSV questions their text.
+function qKey(q){ return q.id || q.q; }
+
 function renderBankList(){
   const el = document.getElementById('bankList');
   const labels = Object.keys(banks);
@@ -1095,7 +1121,7 @@ function unrecord(rLabel, student){
 function enabledIdx(bLabel){
   const off = new Set(qOff[bLabel] || []);
   const qs = banks[bLabel] || [];
-  return qs.map((_,i)=>i).filter(i=>!off.has(qs[i].q));
+  return qs.map((_,i)=>i).filter(i=>!off.has(qKey(qs[i])));
 }
 function renderQChoices(){
   const bLabel = document.getElementById('pBank').value;
@@ -1105,13 +1131,13 @@ function renderQChoices(){
   const qs = banks[bLabel];
   const off = new Set(qOff[bLabel] || []);
   box.innerHTML = qs.map((q,i)=>
-    `<label class="check qpick"><input type="checkbox" data-i="${i}"${off.has(q.q) ? '' : ' checked'}><span>${i+1}. ${escapeHtml(q.q.length > 110 ? q.q.slice(0,110) + '…' : q.q)}</span></label>`
+    `<label class="check qpick"><input type="checkbox" data-i="${i}"${off.has(qKey(q)) ? '' : ' checked'}><span>${i+1}. ${q.id ? '<b>' + escapeHtml(q.id.split('-')[0]) + '</b> ' : ''}${escapeHtml(q.q.length > 110 ? q.q.slice(0,110) + '…' : q.q)}</span></label>`
   ).join('');
   cnt.textContent = enabledIdx(bLabel).length + ' of ' + qs.length + ' on';
   renderSetupSummary();
   box.querySelectorAll('input').forEach(cb=>cb.addEventListener('change', ()=>{
     const list = new Set(qOff[bLabel] || []);
-    const text = qs[Number(cb.dataset.i)].q;
+    const text = qKey(qs[Number(cb.dataset.i)]);
     if(cb.checked) list.delete(text); else list.add(text);
     qOff[bLabel] = Array.from(list);
     save('rc_qoff', qOff);
@@ -1261,8 +1287,8 @@ function renderStage(rLabel, student, bLabel, question, note, secs){
     <div class="namecard" id="nameCard" style="${secs ? 'display:none;' : ''}">${escapeHtml(student)}</div>
     <div class="qcard">
       <div class="topic">${escapeHtml(bLabel)}</div>
-      <div class="qtext">${escapeHtml(question.q)}</div>
-      ${question.choices.map((c,i)=>`<div class="choice" data-i="${i}"><span class="letter">${letters[i]}</span><span>${escapeHtml(c)}</span></div>`).join('')}
+      <div class="qtext">${question.fmt === 'md' && window.CourseQuestions ? CourseQuestions.promptHtml({prompt: question.q, code: question.code}) : escapeHtml(question.q)}</div>
+      ${question.choices.map((c,i)=>`<div class="choice" data-i="${i}"><span class="letter">${letters[i]}</span><span${question.fmt === 'md' ? ' style="white-space:pre-wrap"' : ''}>${question.fmt === 'md' && window.CourseQuestions ? CourseQuestions.inline(c) : escapeHtml(c)}</span></div>`).join('')}
     </div>
     <div class="reveal-row" id="revealRow" style="${secs ? 'display:none;' : ''}">
       <button class="btn secondary" id="revealBtn">Reveal answer</button>
@@ -1320,7 +1346,7 @@ function recordPoint(rLabel, student, correct, bLabel, question){
   if(correct){ rec.correct += 1; rec.points += 1; }
   save('rc_points', points);
   if(question){
-    attemptLog.push({ t: new Date().toISOString(), roster: rLabel, topic: bLabel, q: question.q, student: student, ok: correct ? 1 : 0 });
+    attemptLog.push({ t: new Date().toISOString(), roster: rLabel, topic: bLabel, q: question.id ? question.id + ' ' + question.q : question.q, student: student, ok: correct ? 1 : 0 });
     save('rc_log', attemptLog);
   }
   // A student who misses can go back on the list for another try (only matters when "Pick each student only once" is on).

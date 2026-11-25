@@ -22,6 +22,7 @@
   };
 </script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="course-questions.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Titan+One&family=Rubik:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -477,6 +478,7 @@
         <input type="file" id="csvInput" accept=".csv,text/csv" class="visually-hidden">
         <div id="csvSummary" style="margin-top:14px;"></div>
         <div class="actions-row">
+          <button class="btn btn-primary btn-sm" id="courseQBtn" type="button">Course questions…</button>
           <button class="btn btn-ghost btn-sm" id="downloadTemplate" type="button">Download CSV template</button>
           <button class="btn btn-ghost btn-sm" id="clearCsv" type="button" hidden>Clear question bank</button>
         </div>
@@ -1486,14 +1488,18 @@
           card.appendChild(el("div",{class:"hint warn"},["Image \u201C"+question.image+"\u201D not uploaded yet — add it under Question images in Setup."]));
         }
       }
-      card.appendChild(el("div",{class:"question-text"},[question.text]));
+      if(question.fmt === "md" && window.CourseQuestions){
+        card.appendChild(el("div",{class:"question-text", html: CourseQuestions.promptHtml({prompt:question.text, code:question.code})}));
+      } else {
+        card.appendChild(el("div",{class:"question-text"},[question.text]));
+      }
       var correctLetter = correctLetterFor(question);
       if(question.choices && question.choices.length){
         var grid = el("div",{class:"choices"});
         question.choices.forEach(function(c){
           grid.appendChild(el("div",{class:"choice" + (c.letter === correctLetter ? " correct" : "")},[
             el("span",{class:"letter"},[c.letter]),
-            el("span",{class:"ctext"},[c.text])
+            (question.fmt === "md" && window.CourseQuestions) ? el("span",{class:"ctext", html: CourseQuestions.inline(c.text)}) : el("span",{class:"ctext"},[c.text])
           ]));
         });
         card.appendChild(grid);
@@ -1773,6 +1779,19 @@
     if(csvInput.files && csvInput.files[0]) handleCsvFile(csvInput.files[0]);
   });
   $("#clearCsv").addEventListener("click", function(){ questionBank = []; csvInput.value = ""; renderCsvSummary(); validateSetup(); });
+  // Course questions: Check for Understanding MCQs from the course site (course-questions.js).
+  $("#courseQBtn").addEventListener("click", function(){
+    if(!window.CourseQuestions){ alert("The course-questions.js file did not load. Reload the page and try again."); return; }
+    CourseQuestions.open({ askName:false, onLoad:function(qs){
+      questionBank = qs.map(function(q){
+        return { id:q.id, text:q.prompt, code:q.code, fmt:"md", topic:q.section, answer:"ABCD"[q.correct], image:"",
+                 choices:q.choices.map(function(t,i){ return { letter:"ABCD"[i], text:t }; }) };
+      });
+      csvInput.value = "";
+      renderCsvSummary();
+      validateSetup();
+    }});
+  });
   $("#downloadTemplate").addEventListener("click", function(){ saveFile("roll-call-race-questions-template.csv", TEMPLATE_CSV); });
 
   var rosterDropZone = $("#rosterDropZone");
